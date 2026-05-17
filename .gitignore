@@ -1,0 +1,7 @@
+.env
+Backend/venv/
+Backend/.idea/
+Backend/routes/__pycache__/
+Frontend/node_modules/
+Frontend/dist/
+.vscode/
