@@ -30,6 +30,19 @@ check_dependencies() {
         fi
     fi
     
+    if ! python3 -m pip --version &>/dev/null; then
+        log_warn "pip для Python3 не найден, устанавливаю..."
+        if command -v apt-get &>/dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq python3-pip python3-venv
+        elif command -v yum &>/dev/null; then
+            sudo yum install -y -q python3-pip python3-devel
+        else
+            log_error "Не удалось установить pip. Установите вручную: sudo apt install python3-pip"
+            exit 1
+        fi
+    log_success "pip установлен"
+    fi
+    
     # Docker
     if ! command -v docker &> /dev/null; then
         log_warn "Docker не найден, выполняется установка..."
@@ -41,7 +54,7 @@ check_dependencies() {
     
     # Добавляем пользователя в группу docker (если нужно)
     if ! groups $USER | grep -q docker; then
-        log_warn "Добавляю пользователя $USER в группу docker..."
+        log_warn "Добавление пользователя $USER в группу docker..."
         sudo usermod -aG docker $USER
         log_warn "WARN: Для применения изменений перезайдите в систему или выполните: newgrp docker"
     fi
@@ -66,55 +79,61 @@ check_dependencies() {
 detect_postgres() {
     log_info "Поиск PostgreSQL..."
     
-    local detected_host="localhost"
+    local detected_host=""
     local detected_port=""
     local detected_user=""
     
-    # Через ss (systemd-socket или netstat)
+    # Через ss с отладкой
     if command -v ss &>/dev/null; then
-        log_info "Сканирование активных портов через ss..."
-        # Ищем процессы с именем postgres или порт 5432
-        local pg_lines=$(ss -tlnp 2>/dev/null | grep -iE '(postgres|:543[0-9])' || true)
+        log_info "Сканирование портов через ss..."
+        local ss_output=$(ss -tlnp 2>/dev/null | grep -iE '(postgres|:543[0-9])' || true)
         
-        if [ -n "$pg_lines" ]; then
-            # Парсим вывод: LISTEN 0 128 127.0.0.1:5432 ...
-            detected_port=$(echo "$pg_lines" | head -1 | grep -oE ':[0-9]+' | tail -1 | tr -d ':')
-            local addr=$(echo "$pg_lines" | head -1 | awk '{print $4}' | cut -d: -f1)
+        if [ -n "$ss_output" ]; then
+            log_info "Найдено в ss: $ss_output"
             
-            # Если адрес 0.0.0.0 или *, используем 127.0.0.1
-            if [[ "$addr" == "0.0.0.0" || "$addr" == "*" || "$addr" == "::" ]]; then
-                detected_host="127.0.0.1"
-            else
-                detected_host="$addr"
-            fi
+            # Парсим: берём 4-ю колонку (адрес:порт)
+            local addr_port=$(echo "$ss_output" | head -1 | awk '{print $4}')
+            detected_host=$(echo "$addr_port" | rev | cut -d: -f2- | rev)  # Всё кроме последнего :
+            detected_port=$(echo "$addr_port" | rev | cut -d: -f1 | rev)   # Последнее после :
+            
+            # Нормализация хоста
+            case "$detected_host" in
+                "0.0.0.0"|"*"|"::") detected_host="127.0.0.1" ;;
+                "127.0.0.1") ;;
+                *) ;;
+            esac
+            
             log_success "PostgreSQL найден: $detected_host:$detected_port"
         fi
     fi
     
-    # если ss не дал результата
+    # pg_isready как резерв
     if [ -z "$detected_port" ]; then
+        log_warn "Не найдено через ss, поиск через pg_isready..."
         for port in 5432 5433 5434; do
-            if pg_isready -h localhost -p $port -q 2>/dev/null; then
+            if pg_isready -h 127.0.0.1 -p $port -q 2>/dev/null; then
                 detected_port=$port
-                detected_host="localhost"
+                detected_host="127.0.0.1"
                 log_success "PostgreSQL найден на порту $port"
                 break
             fi
         done
     fi
     
-    # Способ 3: Unix socket
+    # Unix socket ===
     if [ -z "$detected_port" ] && [ -S /var/run/postgresql/.s.PGSQL.5432 ]; then
         detected_port=5432
         detected_host="/var/run/postgresql"
         log_success "PostgreSQL найден через Unix-socket"
     fi
     
-    # Если не нашли — интерактивный ввод
+    # Ручной, если авто-поиск не сработал
     if [ -z "$detected_port" ]; then
-        log_warn "PostgreSQL не найден автоматически"
-        echo "Подсказка: убедитесь, что PostgreSQL запущен и слушает подключения"
-        echo "   Проверьте: sudo ss -tlnp | grep postgres"
+        log_warn "WARN: PostgreSQL не найден автоматически"
+        echo " Убедитесь, что:"
+        echo "   1) PostgreSQL запущен - sudo systemctl status postgresql"
+        echo "   2) Слушает нужные интерфейсы - sudo ss -tlnp | grep 5432"
+        echo "   3) pg_hba.conf разрешает подключения"
         
         read -p "Введите хост PostgreSQL [127.0.0.1]: " detected_host
         detected_host=${detected_host:-127.0.0.1}
@@ -123,14 +142,14 @@ detect_postgres() {
         
         # Тест подключения
         if ! timeout 3 bash -c "echo > /dev/tcp/$detected_host/$detected_port" 2>/dev/null; then
-            log_error "Не удалось подключиться к $detected_host:$detected_port"
-            echo "   Проверьте: 1) PostgreSQL запущен, 2) pg_hba.conf разрешает подключения"
+            log_error "ERROR: Не удалось подключиться к $detected_host:$detected_port"
+            echo "   Проверьте pg_hba.conf и firewall"
             exit 1
         fi
         log_success "Подключение проверено"
     fi
     
-    # Учётные данные
+    # === Учётные данные ===
     read -p "Введите пользователя PostgreSQL [postgres]: " detected_user
     detected_user=${detected_user:-postgres}
     
@@ -141,7 +160,7 @@ detect_postgres() {
         exit 1
     fi
     
-    # Сохраняем
+    # Сохраняем в глобальные переменные
     PG_HOST="$detected_host"
     PG_PORT="$detected_port"
     PG_USER="$detected_user"
