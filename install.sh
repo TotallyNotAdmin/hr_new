@@ -48,41 +48,17 @@ check_dependencies() {
 }
 
 ensure_docker_access() {
-    # Проверяем, есть ли доступ к Docker
-    if docker info &>/dev/null; then
-        log_success "Доступ к Docker получен"
-        return 0
-    fi
-
-    if ! groups $USER | grep -q '\bdocker\b'; then
-        log_warn "Добавление пользователя $USER в группу docker..."
-        sudo usermod -aG docker $USER
-        log_warn "Перезапуск скрипта с обновлёнными правами..."
-        
-        # Перезапускаем этот же скрипт через exec с newgrp
-        exec newgrp docker << EOF
-$(declare -f)
-$(declare -f main)
-main "$@"
-EOF
-        exit $?
-    fi
-
-    # Если в группе, но доступа нет — пробуем newgrp
-    log_warn "Попытка получить доступ через newgrp..."
-    if newgrp docker <<'ENDOFSCRIPT'
-docker info &>/dev/null
+    if ! docker info &>/dev/null; then
+        log_warn "Docker недоступен без sudo. Выполнение newgrp..."
+        if newgrp docker <<'ENDOFSCRIPT'
+            docker info &>/dev/null
 ENDOFSCRIPT
-    then
-        log_success "Доступ получен через newgrp"
-        # Перезапускаем основной поток
-        exec newgrp docker
-    else
-        log_error "Не удалось получить доступ к Docker"
-        log_error "Решения:"
-        log_error "  1) Перезайдите в систему заново"
-        log_error "  2) Или запустите скрипт установки через 'sudo': sudo bash $0"
-        exit 1
+        then
+            log_success "Доступ к Docker получен через newgrp"
+        else
+            log_error "Не удалось получить доступ к Docker. Запустите скрипт с sudo или перезайдите в систему"
+            exit 1
+        fi
     fi
 }
 
