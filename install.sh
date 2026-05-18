@@ -192,8 +192,8 @@ generate_env() {
     else
         DB_HOST_FOR_DOCKER="$PG_HOST"
     fi
-    local DB_URL="postgresql://$PG_USER:$PG_PASS@$PG_HOST:$PG_PORT/$SELECTED_DB"
-    log_info "DATABASE_URL (без пароля): postgresql://$PG_USER:****@$PG_HOST:$PG_PORT/$SELECTED_DB"
+    local DB_URL="postgresql://$PG_USER:$PG_PASS@$DB_HOST_FOR_DOCKER:$PG_PORT/$SELECTED_DB"
+    log_info "DATABASE_URL (без пароля): postgresql://$PG_USER:****@$DB_HOST_FOR_DOCKER:$PG_PORT/$SELECTED_DB"
     
     local JWT_SECRET=$(openssl rand -hex 32)
 
