@@ -6,6 +6,22 @@ from pathlib import Path
 from passlib.hash import bcrypt
 from urllib.parse import urlparse
 
+backend_path = Path(__file__).parent / "Backend"
+if backend_path.exists() and str(backend_path) not in sys.path:
+    sys.path.insert(0, str(backend_path))
+
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        load_dotenv(env_path)
+except ImportError:
+    # Если dotenv не установлен - полагаемся на экспорт из install.sh
+    pass
+
+from const import DATABASE_URL
+
+
 def validate_database_url(url: str) -> bool:
     try:
         parsed = urlparse(url)
@@ -18,8 +34,17 @@ def validate_database_url(url: str) -> bool:
         if not parsed.path.lstrip('/'):
             return False
         return True
-    except:
+    except Exception:
         return False
+
+def mask_database_url(url: str) -> str:
+    """Безопасное маскирование чувствительных данных"""
+    try:
+        parsed = urlparse(url)
+        port_str = f":{parsed.port}" if parsed.port else ""
+        return f"{parsed.scheme}://****:****@{parsed.hostname}{port_str}/{parsed.path.lstrip('/')}"
+    except Exception:
+        return "postgresql://****:****@****:****/****"
 
 
 ROLE_MAP = {
