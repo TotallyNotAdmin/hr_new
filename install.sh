@@ -187,25 +187,25 @@ select_database() {
 generate_env() {
     log_info "Генерация .env..."
     SELECTED_DB=$(echo "$SELECTED_DB" | tr -d '[:space:]')
-    if [[ "$PG_HOST" == "127.0.0.1" || "$PG_HOST" == "localhost" ]]; then
-        DB_HOST_FOR_DOCKER="host.docker.internal"
-    else
-        DB_HOST_FOR_DOCKER="$PG_HOST"
-    fi
-    local DB_URL="postgresql://$PG_USER:$PG_PASS@$DB_HOST_FOR_DOCKER:$PG_PORT/$SELECTED_DB"
-    log_info "DATABASE_URL (без пароля): postgresql://$PG_USER:****@$DB_HOST_FOR_DOCKER:$PG_PORT/$SELECTED_DB"
+    
+    # Для .env оставляем оригинальный хост (для init_db.py на хосте)
+    local DB_URL="postgresql://$PG_USER:$PG_PASS@$PG_HOST:$PG_PORT/$SELECTED_DB"
+    
+    log_info "DATABASE_URL (без пароля): postgresql://$PG_USER:****@$PG_HOST:$PG_PORT/$SELECTED_DB"
     
     local JWT_SECRET=$(openssl rand -hex 32)
 
     cat > .env << EOF
 # === АВТО-ГЕНЕРАЦИЯ ===
 DATABASE_URL=$DB_URL
+# Отдельный URL для Docker-контейнеров
+DATABASE_URL_DOCKER=postgresql://$PG_USER:$PG_PASS@${PG_HOST//127.0.0.1/host.docker.internal}:${PG_HOST//localhost/host.docker.internal}:$PG_PORT/$SELECTED_DB
 JWT_SECRET_KEY=$JWT_SECRET
 FRONTEND_URL=http://localhost
 EOF
     chmod 600 .env
     log_success ".env сгенерирован"
-    echo -e "\n${YELLOW}ВАЖНО:${NC} Сгенерированные пароли пользователей будут выведены после init_db.py"
+    echo -e "\n${YELLOW}ВАЖНО:${NC} Пароли пользователей будут выведены в отдельный файл после инициализации БД"
     echo -e "   JWT_SECRET: ${GREEN}$JWT_SECRET${NC}"
 }
 

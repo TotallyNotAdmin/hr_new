@@ -3,6 +3,8 @@ services:
     build: ./Backend
     container_name: hr-backend
     env_file: .env
+    environment:
+      - DATABASE_URL=${DATABASE_URL_DOCKER:-$DATABASE_URL}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
