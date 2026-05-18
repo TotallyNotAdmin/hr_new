@@ -48,17 +48,41 @@ check_dependencies() {
 }
 
 ensure_docker_access() {
-    if ! docker info &>/dev/null; then
-        log_warn "Docker недоступен без sudo. Выполнение newgrp..."
-        if newgrp docker <<'ENDOFSCRIPT'
-            docker info &>/dev/null
+    # Проверяем, есть ли доступ к Docker
+    if docker info &>/dev/null; then
+        log_success "Доступ к Docker получен"
+        return 0
+    fi
+
+    if ! groups $USER | grep -q '\bdocker\b'; then
+        log_warn "Добавление пользователя $USER в группу docker..."
+        sudo usermod -aG docker $USER
+        log_warn "Перезапуск скрипта с обновлёнными правами..."
+        
+        # Перезапускаем этот же скрипт через exec с newgrp
+        exec newgrp docker << EOF
+$(declare -f)
+$(declare -f main)
+main "$@"
+EOF
+        exit $?
+    fi
+
+    # Если в группе, но доступа нет — пробуем newgrp
+    log_warn "Попытка получить доступ через newgrp..."
+    if newgrp docker <<'ENDOFSCRIPT'
+docker info &>/dev/null
 ENDOFSCRIPT
-        then
-            log_success "Доступ к Docker получен через newgrp"
-        else
-            log_error "Не удалось получить доступ к Docker. Запустите скрипт с sudo или перезайдите в систему"
-            exit 1
-        fi
+    then
+        log_success "Доступ получен через newgrp"
+        # Перезапускаем основной поток
+        exec newgrp docker
+    else
+        log_error "Не удалось получить доступ к Docker"
+        log_error "Решения:"
+        log_error "  1) Перезайдите в систему заново"
+        log_error "  2) Или запустите скрипт установки через 'sudo': sudo bash $0"
+        exit 1
     fi
 }
 
@@ -277,18 +301,26 @@ start_containers() {
     log_info "Запуск контейнеров..."
     docker compose down --remove-orphans 2>/dev/null || true
     docker compose up -d --build
-    sleep 5
-    if docker compose ps | grep -q "Up"; then
-        log_success "Контейнеры запущены"
-    else
-        log_warn "Проверьте логи: docker compose logs -f"
-    fi
+    
+    log_info "Ожидание запуска сервисов..."
+    for i in {1..12}; do
+        if docker compose ps | grep -q "Up.*8000" && docker compose ps | grep -q "Up.*80"; then
+            log_success "Контейнеры запущены"
+            return 0
+        fi
+        sleep 5
+    done
+    
+    log_error "Таймаут ожидания запуска контейнеров"
+    log_error "Логи:"
+    docker compose logs --tail=20
+    return 1
 }
 
 # ==================== ФИНАЛЬНЫЕ СООБЩЕНИЯ ====================
 show_completion() {
     echo -e "\n${GREEN}╔════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║${NC}    Система успешно установлена!       ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}    Система успешно установлена!        ${GREEN}║${NC}"
     echo -e "${GREEN}╚════════════════════════════════════════╝${NC}\n"
     echo "Frontend: http://$(hostname -I | awk '{print $1}' | head -1)"
     echo "Backend API: http://$(hostname -I | awk '{print $1}' | head -1):8000/docs"
