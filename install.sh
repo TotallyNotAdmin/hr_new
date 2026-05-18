@@ -138,26 +138,32 @@ select_database() {
     while true; do
         log_info "Загружаем список баз данных..."
         local tmp_list=$(mktemp)
+        
         PGPASSWORD="$PG_PASS" psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -lqt 2>/dev/null | \
-            cut -d \| -f 1 | grep -w '[a-zA-Z0-9_]\+' | grep -v '^ *$' | sort > "$tmp_list"
+            cut -d \| -f 1 | grep -w '[a-zA-Z0-9_]\+' | grep -v '^ *$' | xargs -I{} echo "{}" | sort -u > "$tmp_list"
         
         if [ ! -s "$tmp_list" ]; then
             log_error "Не удалось получить список БД. Проверьте права пользователя"
             rm -f "$tmp_list"; continue
         fi
-
+        
         echo -e "\n${GREEN}Доступные базы данных:${NC}"
         local i=1; local -a db_array=()
         while IFS= read -r db; do
+            db=$(echo "$db" | xargs)
+            [[ -z "$db" ]] && continue
             echo "  $i) $db"
             db_array+=("$db"); ((i++))
         done < "$tmp_list"
         rm -f "$tmp_list"
-
+        
         read -p "Выберите номер базы [1]: " db_choice
         db_choice=${db_choice:-1}
+        
         if [[ "$db_choice" =~ ^[0-9]+$ ]] && [ "$db_choice" -ge 1 ] && [ "$db_choice" -le "${#db_array[@]}" ]; then
             SELECTED_DB="${db_array[$((db_choice-1))]}"
+            # Финальная очистка: удаляем все пробелы из имени БД
+            SELECTED_DB=$(echo "$SELECTED_DB" | tr -d '[:space:]')
             log_success "Выбрана база: $SELECTED_DB"
             break
         else
@@ -169,7 +175,10 @@ select_database() {
 # ==================== ГЕНЕРАЦИЯ .ENV ====================
 generate_env() {
     log_info "Генерация .env..."
+    SELECTED_DB=$(echo "$SELECTED_DB" | tr -d '[:space:]')
     local DB_URL="postgresql://$PG_USER:$PG_PASS@$PG_HOST:$PG_PORT/$SELECTED_DB"
+    log_info "DATABASE_URL (без пароля): postgresql://$PG_USER:****@$PG_HOST:$PG_PORT/$SELECTED_DB"
+    
     local JWT_SECRET=$(openssl rand -hex 32)
 
     cat > .env << EOF
