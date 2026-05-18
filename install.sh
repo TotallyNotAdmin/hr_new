@@ -272,21 +272,25 @@ configure_pg_hba() {
 start_containers() {
     log_info "Запуск контейнеров..."
     sudo docker compose down --remove-orphans 2>/dev/null || true
-    sudo docker compose up -d --build
+    if ! sudo docker compose up -d --build; then
+        log_error "Не удалось собрать (запустить) контейнеры!"
+        sudo docker compose logs --tail=50
+        exit 1
+    fi
     
     log_info "Ожидание запуска сервисов..."
-    for i in {1..12}; do
-        if sudo docker compose ps | grep -q "Up"; then
-            log_success "Контейнеры запущены"
-            return 0
-        fi
-        sleep 5
-    done
-    
-    log_error "Таймаут ожидания запуска контейнеров"
-    log_error "Логи:"
-    sudo docker compose logs --tail=20
-    return 1
+	for i in {1..12}; do
+	    if sudo docker compose ps --format "table {{.Status}}" | grep -q "Up"; then
+	        if sudo docker compose ps backend --format "{{.Status}}" | grep -q "healthy"; then
+	            log_success "Все контейнеры запущены"
+	            return 0
+	        fi
+	    fi
+	    sleep 5
+	done
+	log_error "Превышено время ожидания запуска контейнеров"
+	sudo docker compose logs --tail=30
+	return 1
 }
 
 # ==================== ФИНАЛЬНЫЕ СООБЩЕНИЯ ====================
@@ -315,9 +319,15 @@ main() {
     detect_postgres
     select_database
     generate_env
-    init_database
+    if ! init_database; then
+        log_error "Установка прервана: ошибка инициализации БД"
+        exit 1
+    fi
     configure_pg_hba
-    start_containers
+    if ! start_containers; then
+        log_error "Установка не завершена из-за ошибки запуска контейнеров"
+        exit 1
+    fi
     show_completion
 }
 
