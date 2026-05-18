@@ -54,13 +54,17 @@ detect_postgres() {
 
     # Авто-поиск через ss
     if command -v ss &>/dev/null; then
-        local ss_line=$(ss -tlnp 2>/dev/null | grep -iE 'postgres' | head -1 || true)
+        log_info "Сканирование через ss..."
+        local ss_line
+        ss_line=$(sudo ss -tlnp 2>/dev/null | grep -i 'postgres' | head -1 || true)
         if [ -n "$ss_line" ]; then
             local addr=$(echo "$ss_line" | awk '{print $4}')
             detected_port=$(echo "$addr" | rev | cut -d: -f1 | rev)
             detected_host=$(echo "$addr" | rev | cut -d: -f2- | rev)
-            case "$detected_host" in "0.0.0.0"|"*"|"::") detected_host="127.0.0.1" ;; esac
-            log_success "PostgreSQL найден через ss: $detected_host:$detected_port"
+            case "$detected_host" in
+                "0.0.0.0"|"*"|"::") detected_host="127.0.0.1" ;;
+            esac
+            log_success "PostgreSQL найден: $detected_host:$detected_port"
         fi
     fi
 

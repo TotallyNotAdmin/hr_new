@@ -2,6 +2,11 @@ import asyncio
 import sys
 import secrets
 from pathlib import Path
+
+backend_path = Path(__file__).parent / "Backend"
+if backend_path.exists() and str(backend_path) not in sys.path:
+    sys.path.insert(0, str(backend_path))
+
 import asyncpg
 from passlib.hash import bcrypt
 from const import DATABASE_URL
