@@ -187,6 +187,11 @@ select_database() {
 generate_env() {
     log_info "Генерация .env..."
     SELECTED_DB=$(echo "$SELECTED_DB" | tr -d '[:space:]')
+    if [[ "$PG_HOST" == "127.0.0.1" || "$PG_HOST" == "localhost" ]]; then
+        DB_HOST_FOR_DOCKER="host.docker.internal"
+    else
+        DB_HOST_FOR_DOCKER="$PG_HOST"
+    fi
     local DB_URL="postgresql://$PG_USER:$PG_PASS@$PG_HOST:$PG_PORT/$SELECTED_DB"
     log_info "DATABASE_URL (без пароля): postgresql://$PG_USER:****@$PG_HOST:$PG_PORT/$SELECTED_DB"
     
@@ -293,6 +298,47 @@ start_containers() {
 	return 1
 }
 
+# ==================== НАСТРОЙКА БРАНДМАУЭРА ====================
+configure_firewall() {
+    log_info "Настройка правил брандмауэра (UFW)"
+    
+    if ! command -v ufw &>/dev/null; then
+        log_warn "UFW не установлен - пропуск настройки..."
+        return 0
+    fi
+    
+    if ! sudo ufw status &>/dev/null; then
+        log_warn "UFW не активен (статус: inactive) - пропуск настройки..."
+        return 0
+    fi
+    
+    # Frontend
+    if ! sudo ufw status | grep -qE "^80/tcp\s+ALLOW"; then
+        log_info "Проверка доступности порта 80 (HTTP)..."
+        sudo ufw allow 80/tcp
+    else
+        log_info "Порт 80 открыт"
+    fi
+    
+    # Backend
+    if ! sudo ufw status | grep -qE "^8000/tcp\s+ALLOW"; then
+        log_info "Проверка доступности порта 8000 (Backend API)..."
+        sudo ufw allow 8000/tcp
+    else
+        log_info "Порт 8000 открыт"
+    fi
+    
+    # Порт PostgreSQL
+    if ! sudo ufw status | grep -qE "^${PG_PORT}/tcp\s+ALLOW"; then
+        log_info "Проверка доступности порта PostgreSQL ${PG_PORT}..."
+        sudo ufw allow "${PG_PORT}/tcp"
+    else
+        log_info "Порт PostgreSQL ${PG_PORT} открыт"
+    fi
+    
+    log_success "Правила брандмауэра настроены"
+}
+
 # ==================== ФИНАЛЬНЫЕ СООБЩЕНИЯ ====================
 show_completion() {
     echo -e "\n${GREEN}╔════════════════════════════════════════╗${NC}"
@@ -324,6 +370,7 @@ main() {
         exit 1
     fi
     configure_pg_hba
+    configure_firewall
     if ! start_containers; then
         log_error "Установка не завершена из-за ошибки запуска контейнеров"
         exit 1
