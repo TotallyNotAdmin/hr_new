@@ -4,7 +4,7 @@
 set -e
 
 # === НАСТРОЙКИ ===
-REPO_URL="https://github.com/your-repo/hr-system.git"
+REPO_URL="https://github.com/TotallyNotAdmin/hr_new.git"
 DEFAULT_DIR="$HOME/hr-system"
 TARGET_DIR="${1:-$DEFAULT_DIR}"
 
