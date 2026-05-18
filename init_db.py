@@ -1,24 +1,25 @@
 import asyncio
 import sys
 import secrets
-from pathlib import Path
-
-backend_path = Path(__file__).parent / "Backend"
-if backend_path.exists() and str(backend_path) not in sys.path:
-    sys.path.insert(0, str(backend_path))
-
 import asyncpg
+from pathlib import Path
 from passlib.hash import bcrypt
-from const import DATABASE_URL
+from urllib.parse import urlparse
 
-try:
-    from dotenv import load_dotenv
-
-    env_path = Path(__file__).parent / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
-except ImportError:
-    pass
+def validate_database_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ('postgresql', 'postgresql+asyncpg'):
+            return False
+        if not parsed.hostname:
+            return False
+        if parsed.port and not str(parsed.port).isdigit():
+            return False
+        if not parsed.path.lstrip('/'):
+            return False
+        return True
+    except:
+        return False
 
 
 ROLE_MAP = {
@@ -166,6 +167,11 @@ async def main():
     print(f"Подключение: {DATABASE_URL.replace('@', '@****').replace('://', '://****:****@')}")
 
     try:
+        if not validate_database_url(DATABASE_URL):
+            print(f"Ошибка:Некорректный DATABASE_URL: {DATABASE_URL}")
+            print("Ожидаемый формат: postgresql://user:pass@host:port/dbname")
+            sys.exit(1)
+
         pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=3)
 
         await init_schema(pool)

@@ -49,78 +49,88 @@ check_dependencies() {
 
 # ==================== ПОИСК POSTGRESQL ====================
 detect_postgres() {
-    log_info "Поиск PostgreSQL..."
-    local detected_host="" detected_port=""
+	log_info "Поиск PostgreSQL..."
+	local detected_host="" detected_port=""
 
-    # Авто-поиск через ss
-    if command -v ss &>/dev/null; then
-        log_info "Сканирование через ss..."
-        local ss_line
-        ss_line=$(sudo ss -tlnp 2>/dev/null | grep -i 'postgres' | head -1 || true)
-        if [ -n "$ss_line" ]; then
-            local addr=$(echo "$ss_line" | awk '{print $4}')
-            detected_port=$(echo "$addr" | rev | cut -d: -f1 | rev)
-            detected_host=$(echo "$addr" | rev | cut -d: -f2- | rev)
-            case "$detected_host" in
-                "0.0.0.0"|"*"|"::") detected_host="127.0.0.1" ;;
-            esac
-            log_success "PostgreSQL найден: $detected_host:$detected_port"
-        fi
-    fi
+	# Авто-поиск через ss
+	if command -v ss &>/dev/null; then
+	    log_info "Сканирование через ss..."
+	    local ss_line
+	    ss_line=$(sudo ss -tlnp -n 2>/dev/null | grep -i 'postgres' | head -1 || true)
+	    if [ -n "$ss_line" ]; then
+	        local addr=$(echo "$ss_line" | awk '{print $4}')
+	        detected_port=$(echo "$addr" | rev | cut -d: -f1 | rev)
+	        detected_host=$(echo "$addr" | rev | cut -d: -f2- | rev)
+	        case "$detected_host" in
+	            "0.0.0.0"|"*"|"::") detected_host="127.0.0.1" ;;
+	        esac
+	        if [[ "$detected_port" =~ ^[0-9]+$ ]]; then
+	            log_success "PostgreSQL найден: $detected_host:$detected_port"
+	        else
+	            log_warn "Обнаружен нечисловой порт '$detected_port' (возможно, имя сервиса). Потребуется ручной ввод"
+	            detected_port=""
+	        fi
+	    fi
+	fi
 
-    # Резерв: pg_isready
-    if [ -z "$detected_port" ] && command -v pg_isready &>/dev/null; then
-        for port in 5432 5433 5434; do
-            if pg_isready -h 127.0.0.1 -p $port -q 2>/dev/null; then
-                detected_port=$port; detected_host="127.0.0.1"
-                log_success "PostgreSQL найден через pg_isready на порту $port"
-                break
-            fi
-        done
-    fi
+	# Резерв: pg_isready
+	if [ -z "$detected_port" ] && command -v pg_isready &>/dev/null; then
+	    for port in 5432 5433 5434; do
+	        if pg_isready -h 127.0.0.1 -p $port -q 2>/dev/null; then
+	            detected_port=$port; detected_host="127.0.0.1"
+	            log_success "PostgreSQL найден через pg_isready на порту $port"
+	            break
+	        fi
+	    done
+	fi
 
-    # Ручной ввод
-    if [ -z "$detected_port" ]; then
-        log_warn "WARN: PostgreSQL не найден автоматически"
-    fi
+	# Ручной ввод ТОЛЬКО если авто-поиск не удался
+	if [ -z "$detected_port" ] || [ -z "$detected_host" ]; then
+	    log_warn "WARN: PostgreSQL не найден автоматически"
+	    while true; do
+	        [ -z "$detected_host" ] && read -p "Введите хост PostgreSQL [127.0.0.1]: " detected_host
+	        detected_host=${detected_host:-127.0.0.1}
+	        [ -z "$detected_port" ] && read -p "Введите порт PostgreSQL [5432]: " detected_port
+	        detected_port=${detected_port:-5432}
+	        
+	        # Валидация порта
+	        if ! [[ "$detected_port" =~ ^[0-9]+$ ]]; then
+	            log_error "Порт должен быть числом!"
+	            detected_port=""
+	            continue
+	        fi
+	        
+	        # Проверка доступности
+	        if timeout 3 bash -c "echo >/dev/tcp/$detected_host/$detected_port" 2>/dev/null || \
+	           pg_isready -h "$detected_host" -p "$detected_port" -q 2>/dev/null; then
+	            break
+	        else
+	            log_error "Не удалось подключиться к $detected_host:$detected_port"
+	            read -p "Повторить ввод? (y/n) [y]: " rep
+	            [[ "$rep" =~ ^[Nn]$ ]] && exit 1
+	            detected_host=""
+	            detected_port=""
+	        fi
+	    done
+	fi
 
-    while true; do
-        [ -z "$detected_host" ] && read -p "Введите хост PostgreSQL [127.0.0.1]: " detected_host
-        detected_host=${detected_host:-127.0.0.1}
-        read -p "Введите порт PostgreSQL [5432]: " detected_port
-        detected_port=${detected_port:-5432}
-
-        # Проверка доступности порта
-        if timeout 3 bash -c "echo >/dev/tcp/$detected_host/$detected_port" 2>/dev/null || \
-           pg_isready -h "$detected_host" -p "$detected_port" -q 2>/dev/null; then
-            break
-        else
-            log_error "Не удалось подключиться к $detected_host:$detected_port"
-            read -p "Повторить ввод? (y/n) [y]: " rep
-            [[ "$rep" =~ ^[Nn]$ ]] && exit 1
-            detected_host=""
-        fi
-    done
-
-    # Проверка данных
-    while true; do
-        read -p "Введите пользователя PostgreSQL [postgres]: " PG_USER
-        PG_USER=${PG_USER:-postgres}
-        read -s -p "Введите пароль для $PG_USER: " PG_PASS; echo
-        [ -z "$PG_PASS" ] && { log_error "Пароль не может быть пустым!"; continue; }
-
-        if PGPASSWORD="$PG_PASS" pg_isready -h "$detected_host" -p "$detected_port" -U "$PG_USER" &>/dev/null; then
-            log_success "Подключение к БД установлено"
-            break
-        else
-            log_error "Ошибка подключения! Проверьте логин, пароль и pg_hba.conf"
-            read -p "Повторить ввод учётных данных? (y/n) [y]: " rep
-            [[ "$rep" =~ ^[Nn]$ ]] && exit 1
-        fi
-    done
-
-    PG_HOST="$detected_host"
-    PG_PORT="$detected_port"
+	# Проверка учётных данных
+	while true; do
+	    read -p "Введите пользователя PostgreSQL [postgres]: " PG_USER
+	    PG_USER=${PG_USER:-postgres}
+	    read -s -p "Введите пароль для $PG_USER: " PG_PASS; echo
+	    [ -z "$PG_PASS" ] && { log_error "Пароль не может быть пустым!"; continue; }
+	    if PGPASSWORD="$PG_PASS" pg_isready -h "$detected_host" -p "$detected_port" -U "$PG_USER" &>/dev/null; then
+	        log_success "Подключение к БД установлено"
+	        break
+	    else
+	        log_error "Ошибка подключения! Проверьте логин, пароль и pg_hba.conf"
+	        read -p "Повторить ввод учётных данных? (y/n) [y]: " rep
+	        [[ "$rep" =~ ^[Nn]$ ]] && exit 1
+	    fi
+	done
+	PG_HOST="$detected_host"
+	PG_PORT="$detected_port"
 }
 
 # ==================== ВЫБОР БАЗЫ ДАННЫХ ====================
@@ -170,12 +180,16 @@ FRONTEND_URL=http://localhost
 EOF
     chmod 600 .env
     log_success ".env сгенерирован"
-    echo -e "\n${YELLOW}ВАЖНО:${NC} Сохраните сгенерированные пароли пользователей (будут выведены после init_db.py)"
+    echo -e "\n${YELLOW}ВАЖНО:${NC} Сгенерированные пароли пользователей будут выведены после init_db.py"
     echo -e "   JWT_SECRET: ${GREEN}$JWT_SECRET${NC}"
 }
 
 # ==================== ИНИЦИАЛИЗАЦИЯ БД ====================
 init_database() {
+    export DATABASE_URL
+    export JWT_SECRET_KEY
+    export FRONTEND_URL
+
     log_info "Инициализация схемы 'app'..."
     if ! python3 -c "import asyncpg, passlib, dotenv" &>/dev/null; then
         log_warn "Установка Python-зависимостей для init_db.py..."
