@@ -34,11 +34,9 @@ check_dependencies() {
         rm -f get-docker.sh
     fi
     if ! groups $USER | grep -q docker; then
+        log_warn "Добавление пользователя $USER в группу docker..."
         sudo usermod -aG docker $USER
-        newgrp docker << 'EOF'
-        docker compose up -d --build
-        EOF
-        return
+        log_warn "WARN: Для применения изменений перезайдите в систему или выполните: newgrp docker"
     fi
     if ! docker compose version &> /dev/null; then
         log_warn "Установка docker compose v2..."
@@ -47,6 +45,21 @@ check_dependencies() {
         { sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose && sudo chmod +x /usr/local/bin/docker-compose; }
     fi
     log_success "Зависимости проверены"
+}
+
+ensure_docker_access() {
+    if ! docker info &>/dev/null; then
+        log_warn "Docker недоступен без sudo. Выполнение newgrp..."
+        if newgrp docker <<'ENDOFSCRIPT'
+            docker info &>/dev/null
+ENDOFSCRIPT
+        then
+            log_success "Доступ к Docker получен через newgrp"
+        else
+            log_error "Не удалось получить доступ к Docker. Запустите скрипт с sudo или перезайдите в систему"
+            exit 1
+        fi
+    fi
 }
 
 # ==================== ПОИСК POSTGRESQL ====================
@@ -275,7 +288,7 @@ start_containers() {
 # ==================== ФИНАЛЬНЫЕ СООБЩЕНИЯ ====================
 show_completion() {
     echo -e "\n${GREEN}╔════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║${NC}    Система успешно установлена!    ${GREEN}║${NC}"
+    echo -e "${GREEN}║${NC}    Система успешно установлена!       ${GREEN}║${NC}"
     echo -e "${GREEN}╚════════════════════════════════════════╝${NC}\n"
     echo "Frontend: http://$(hostname -I | awk '{print $1}' | head -1)"
     echo "Backend API: http://$(hostname -I | awk '{print $1}' | head -1):8000/docs"
@@ -290,12 +303,13 @@ show_completion() {
 main() {
     echo -e "${GREEN}Система Штат-Контроль (установщик)${NC}\n========================\n"
     check_dependencies
+    ensure_docker_access
     detect_postgres
     select_database
     generate_env
     init_database
-    start_containers
     configure_pg_hba
+    start_containers
     show_completion
 }
 
