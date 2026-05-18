@@ -1,5 +1,5 @@
 #!/bin/bash
-# update.sh - Обновление системы без потери данных
+# update.sh
 
 set -e
 echo "Обновление системы..."
@@ -24,8 +24,8 @@ echo "Проверка миграций БД..."
 python3 init_db.py || echo "WARN: init_db.py завершился с предупреждением"
 
 echo "Пересборка образов..."
-docker compose down
-docker compose up -d --build
+sudo docker compose down
+sudo docker compose up -d --build
 
 echo "Обновление завершено!"
-docker compose ps
+sudo docker compose ps

@@ -48,17 +48,13 @@ check_dependencies() {
 }
 
 ensure_docker_access() {
-    if ! docker info &>/dev/null; then
-        log_warn "Docker недоступен без sudo. Выполнение newgrp..."
-        if newgrp docker <<'ENDOFSCRIPT'
-            docker info &>/dev/null
-ENDOFSCRIPT
-        then
-            log_success "Доступ к Docker получен через newgrp"
-        else
-            log_error "Не удалось получить доступ к Docker. Запустите скрипт с sudo или перезайдите в систему"
-            exit 1
-        fi
+    if sudo docker info &>/dev/null; then
+        log_success "Доступ к Docker через sudo подтверждён"
+        return 0
+    else
+        log_error "Не удалось получить доступ к Docker с sudo"
+        log_error "Проверьте: 1) установлен ли Docker; 2) работает ли служба"
+        exit 1
     fi
 }
 
@@ -275,12 +271,12 @@ configure_pg_hba() {
 # ==================== ЗАПУСК КОНТЕЙНЕРОВ ====================
 start_containers() {
     log_info "Запуск контейнеров..."
-    docker compose down --remove-orphans 2>/dev/null || true
-    docker compose up -d --build
+    sudo docker compose down --remove-orphans 2>/dev/null || true
+    sudo docker compose up -d --build
     
     log_info "Ожидание запуска сервисов..."
     for i in {1..12}; do
-        if docker compose ps | grep -q "Up.*8000" && docker compose ps | grep -q "Up.*80"; then
+        if sudo docker compose ps | grep -q "Up"; then
             log_success "Контейнеры запущены"
             return 0
         fi
@@ -289,7 +285,7 @@ start_containers() {
     
     log_error "Таймаут ожидания запуска контейнеров"
     log_error "Логи:"
-    docker compose logs --tail=20
+    sudo docker compose logs --tail=20
     return 1
 }
 
@@ -310,6 +306,10 @@ show_completion() {
 # ==================== MAIN ====================
 main() {
     echo -e "${GREEN}Система Штат-Контроль (установщик)${NC}\n========================\n"
+    if ! sudo -n true 2>/dev/null; then
+        log_warn "Запрос прав sudo для управления Docker..."
+        sudo -v || { log_error "Требуется ввод пароля sudo"; exit 1; }
+    fi
     check_dependencies
     ensure_docker_access
     detect_postgres
