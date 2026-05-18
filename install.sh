@@ -188,18 +188,23 @@ generate_env() {
     log_info "Генерация .env..."
     SELECTED_DB=$(echo "$SELECTED_DB" | tr -d '[:space:]')
     
-    # Для .env оставляем оригинальный хост (для init_db.py на хосте)
     local DB_URL="postgresql://$PG_USER:$PG_PASS@$PG_HOST:$PG_PORT/$SELECTED_DB"
-    
     log_info "DATABASE_URL (без пароля): postgresql://$PG_USER:****@$PG_HOST:$PG_PORT/$SELECTED_DB"
     
+    # подмена хоста для Docker
+    local docker_host="$PG_HOST"
+    if [[ "$docker_host" == "127.0.0.1" || "$docker_host" == "localhost" ]]; then
+        docker_host="host.docker.internal"
+    fi
+    local DB_URL_DOCKER="postgresql://$PG_USER:$PG_PASS@$docker_host:$PG_PORT/$SELECTED_DB"
+    
     local JWT_SECRET=$(openssl rand -hex 32)
-
+    
     cat > .env << EOF
 # === АВТО-ГЕНЕРАЦИЯ ===
 DATABASE_URL=$DB_URL
 # Отдельный URL для Docker-контейнеров
-DATABASE_URL_DOCKER=postgresql://$PG_USER:$PG_PASS@${PG_HOST//127.0.0.1/host.docker.internal}:${PG_HOST//localhost/host.docker.internal}:$PG_PORT/$SELECTED_DB
+DATABASE_URL_DOCKER=$DB_URL_DOCKER
 JWT_SECRET_KEY=$JWT_SECRET
 FRONTEND_URL=http://localhost
 EOF
