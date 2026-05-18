@@ -164,14 +164,15 @@ async def sync_users(pool):
 
 async def main():
     print("Инициализация базы данных...")
-    print(f"Подключение: {DATABASE_URL.replace('@', '@****').replace('://', '://****:****@')}")
+    print(f"Подключение: {mask_database_url(DATABASE_URL)}")
+
+    # Валидация DATABASE_URL перед подключением
+    if not validate_database_url(DATABASE_URL):
+        print(f"Некорректный DATABASE_URL: {DATABASE_URL}")
+        print("Ожидаемый формат: postgresql://user:pass@host:port/dbname")
+        sys.exit(1)
 
     try:
-        if not validate_database_url(DATABASE_URL):
-            print(f"Ошибка:Некорректный DATABASE_URL: {DATABASE_URL}")
-            print("Ожидаемый формат: postgresql://user:pass@host:port/dbname")
-            sys.exit(1)
-
         pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=3)
 
         await init_schema(pool)
@@ -181,12 +182,20 @@ async def main():
             count = await conn.fetchval("SELECT COUNT(*) FROM app.users")
             print(f"\nКоличество пользователей в схеме 'app': {count}")
 
+    except asyncpg.exceptions.InvalidCatalogNameError:
+        print("Ошибка: база данных не найдена")
+        print("  Проверьте, что БД существует и имя указано верно")
+        sys.exit(1)
+    except asyncpg.exceptions.InvalidAuthorizationSpecificationError:
+        print("Ошибка аутентификации: неверный логин или пароль")
+        print("  Проверьте учётные данные в .env")
+        sys.exit(1)
     except asyncpg.exceptions.PostgresError as e:
         print(f"Ошибка PostgreSQL: {e}")
-        print("Проверьте: 1) подключена ли БД; 2) есть ли права у пользователя; 3) существуют ли схема 'hr'")
+        print("  Проверьте: 1) подключена ли БД; 2) права пользователя; 3) существует ли схема 'hr'")
         sys.exit(1)
     except Exception as e:
-        print(f"Ошибка: {e}")
+        print(f"Ошибка: {type(e).__name__}: {e}")
         sys.exit(1)
     finally:
         if 'pool' in locals():
