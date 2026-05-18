@@ -34,9 +34,11 @@ check_dependencies() {
         rm -f get-docker.sh
     fi
     if ! groups $USER | grep -q docker; then
-        log_warn "Добавление пользователя $USER в группу docker..."
         sudo usermod -aG docker $USER
-        log_warn "WARN: Для применения изменений перезайдите в систему или выполните: newgrp docker"
+        newgrp docker << 'EOF'
+        docker compose up -d --build
+        EOF
+        return
     fi
     if ! docker compose version &> /dev/null; then
         log_warn "Установка docker compose v2..."

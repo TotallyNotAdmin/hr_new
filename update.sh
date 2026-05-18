@@ -9,7 +9,7 @@ if [ -d ".git" ]; then
     git pull origin main
 else
     # Если нет git — скачиваем архив
-    curl -fsSL https://github.com/your-repo/hr-system/archive/main.tar.gz | \
+    curl -fsSL https://github.com/TotallyNotAdmin/hr_new/archive/main.tar.gz | \
         tar -xz --strip-components=1 -C . --exclude='.git'
 fi
 
