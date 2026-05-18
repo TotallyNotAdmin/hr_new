@@ -1,7 +1,6 @@
 #!/bin/bash
 # set -e
 
-# Определяем директорию скрипта и переходим в неё (решает проблему с init_db.py)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
@@ -260,7 +259,7 @@ show_completion() {
 
 # ==================== MAIN ====================
 main() {
-    echo -e "${GREEN}HR-System Installer${NC}\n========================\n"
+    echo -e "${GREEN}Система Штат-Контроль (установщик)${NC}\n========================\n"
     check_dependencies
     detect_postgres
     select_database
