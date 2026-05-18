@@ -10,29 +10,27 @@ router = APIRouter()
 @router.post("/login", response_model=TokenResponse)
 async def login(data: LoginRequest, request: Request):
     pool = request.app.state.pool
-
     async with pool.acquire() as conn:
+        login_input = data.login.lower().strip()
+        
         user = await conn.fetchrow(
             "SELECT * FROM users WHERE login=$1",
-            data.login
+            login_input
         )
-    print("INPUT PASSWORD:", data.password)
-    print("HASH FROM DB:", user["password_hash"])
-    print("VERIFY:", bcrypt.verify(data.password, user["password_hash"]))
-
-    if not user or not bcrypt.verify(data.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    token = create_token({
-        "user_id": user["id"],
-        "login": user["login"],
-        "role": user["role"]
-    })
-
-    return {
-        "access_token": token,
-        "role": user["role"]
-    }
+        
+        if not user:
+            raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+            
+        if not bcrypt.verify(data.password, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+            
+        token = create_token({
+            "user_id": user["id"],
+            "login": user["login"],
+            "role": user["role"]
+        })
+        
+        return {"access_token": token}
 
 
 @router.post("/change-password")
