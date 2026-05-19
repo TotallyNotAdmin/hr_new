@@ -91,7 +91,6 @@
             <h5 class="text-primary mb-2">Текущее состояние (AS IS)</h5>
             <v-select v-model="form.position_id" :items="positions" item-title="position_name" item-value="id" label="Штатная единица" prepend-icon="mdi-briefcase" @update:modelValue="loadPositionData" />
             <v-text-field v-model="form.date" label="Дата изменения" type="date" prepend-icon="mdi-calendar" :min="today" />
-            <v-text-field v-model="form.as_is_position" label="Должность" readonly prepend-icon="mdi-briefcase" />
             <v-text-field v-model="form.as_is_address" label="Адрес" readonly prepend-icon="mdi-map-marker" />
             <v-text-field v-model="form.as_is_salary" label="Оклад (руб.)" readonly type="number" prepend-icon="mdi-cash" />
           </v-col>
@@ -486,7 +485,19 @@ const handleImport = async (event) => {
 
     form.value.employee_id = emp.id;
     form.value.to_be_position_id = pos.id;
-    if (dateCol !== -1 && row[dateCol]) form.value.transfer_date = row[dateCol];
+    if (dateCol !== -1 && row[dateCol]) {
+	  const rawDate = row[dateCol];
+	  let dateObj = new Date(rawDate);
+	  
+	  if (isNaN(dateObj.getTime()) && rawDate.includes('.')) {
+	    const [d, m, y] = rawDate.split('.');
+	    dateObj = new Date(`${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`);
+	  }
+	  
+	  if (!isNaN(dateObj.getTime())) {
+	    form.value.transfer_date = dateObj.toISOString().split('T')[0];
+	  }
+    }
     await loadEmployeeData(emp.id);
     await loadPositionData(pos.id);
 
