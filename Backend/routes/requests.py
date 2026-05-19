@@ -61,7 +61,7 @@ async def approve_request(
         if status != RequestStatus.ON_APPROVAL:
             raise HTTPException(400, "Нельзя согласовать")
         await conn.execute("""
-        UPDATE app.requests SET app.status=$1 WHERE id=$2
+        UPDATE app.requests SET status=$1 WHERE id=$2
         """, RequestStatus.APPROVED, request_id)
 
         await conn.execute("""
