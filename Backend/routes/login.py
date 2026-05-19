@@ -3,16 +3,23 @@ from passlib.hash import bcrypt
 from schemas import LoginRequest, TokenResponse, ChangePasswordRequest
 from auth import create_token, require_role
 from models import Role
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
-def _safe_password(pwd: str) -> str:
-    """Обрезает пароль до 72 байт по требованию bcrypt"""
-    return pwd.encode("utf-8")[:72].decode("utf-8", errors="ignore")
+def _safe_password(pwd: str, max_bytes: int = 72) -> str:
+    """Обрезает пароль до max_bytes для совместимости с bcrypt"""
+    pwd_bytes = pwd.encode('utf-8')
+    if len(pwd_bytes) <= max_bytes:
+        return pwd
+    return pwd_bytes[:max_bytes].decode('utf-8', errors='ignore')
+
 
 @router.post("/login", response_model=TokenResponse)
 async def login(data: LoginRequest, request: Request):
+    logger.debug(f"Password length (bytes): {len(data.password.encode('utf-8'))}")
     pool = request.app.state.pool
     async with pool.acquire() as conn:
         login_input = data.login.lower().strip()
@@ -37,6 +44,7 @@ async def login(data: LoginRequest, request: Request):
             "access_token": token,
             "role": user["role"]
         }
+
 
 @router.post("/change-password")
 async def change_password(
