@@ -17,7 +17,7 @@ async def get_positions(
     pool = request.app.state.pool
 
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT * FROM positions WHERE is_active=true")
+        rows = await conn.fetch("SELECT * FROM hr.positions WHERE is_active=true")
 
     return [dict(row) for row in rows]
 
@@ -26,7 +26,7 @@ async def get_positions(
 async def export_positions(request: Request, user=Depends(require_role([Role.MANAGER]))):
     pool = request.app.state.pool
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT id, position_name, address, salary, is_active FROM positions ORDER BY id")
+        rows = await conn.fetch("SELECT id, position_name, address, salary, is_active FROM hr.positions ORDER BY id")
 
     wb = Workbook()
     ws = wb.active
@@ -60,7 +60,7 @@ async def get_position(
 
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT * FROM positions WHERE id=$1",
+            "SELECT * FROM hr.positions WHERE id=$1",
             id
         )
 
@@ -77,7 +77,7 @@ async def check_position(
 
     async with pool.acquire() as conn:
         employee = await conn.fetchrow(
-            "SELECT * FROM employees WHERE position_id=$1",
+            "SELECT * FROM hr.employees WHERE position_id=$1",
             id
         )
 

@@ -24,14 +24,14 @@ async def create_request(
     pool = request.app.state.pool
     async with pool.acquire() as conn:
         req = await conn.fetchrow("""
-            INSERT INTO requests (creator_id, scenario_type, status, comment, description)
+            INSERT INTO app.requests (creator_id, scenario_type, status, comment, description)
             VALUES ($1, $2, $3, $4, $5)
             RETURNING id
         """, user["user_id"], data.scenario_type, RequestStatus.DRAFT, data.comment, data.description)
 
         request_id = req["id"]
         await conn.execute("""
-            INSERT INTO request_history (request_id, action, user_id, comment)
+            INSERT INTO app.request_history (request_id, action, user_id, comment)
             VALUES ($1, 'create', $2, $3)
         """, request_id, user["user_id"], data.comment)
 
@@ -39,7 +39,7 @@ async def create_request(
             if field.name == 'manager':
                 continue
             await conn.execute("""
-                INSERT INTO request_data (request_id, field_name, as_is_value, to_be_value)
+                INSERT INTO app.request_data (request_id, field_name, as_is_value, to_be_value)
                 VALUES ($1, $2, $3, $4)
             """, request_id, field.name, field.as_is, field.to_be)
 
@@ -55,17 +55,17 @@ async def approve_request(
     pool = request.app.state.pool
     async with pool.acquire() as conn:
         status = await conn.fetchval(
-            "SELECT status FROM requests WHERE id=$1",
+            "SELECT status FROM app.requests WHERE id=$1",
             request_id
         )
         if status != RequestStatus.ON_APPROVAL:
             raise HTTPException(400, "Нельзя согласовать")
         await conn.execute("""
-        UPDATE requests SET status=$1 WHERE id=$2
+        UPDATE app.requests SET app.status=$1 WHERE id=$2
         """, RequestStatus.APPROVED, request_id)
 
         await conn.execute("""
-        INSERT INTO request_history (request_id, action, user_id)
+        INSERT INTO app.request_history (request_id, action, user_id)
         VALUES ($1, 'approve', $2)
         """, request_id, user["user_id"])
 
@@ -78,7 +78,7 @@ async def get_position(request: Request, id: int):
 
     async with pool.acquire() as conn:
         position = await conn.fetchrow("""
-            SELECT * FROM positions WHERE id=$1
+            SELECT * FROM hr.positions WHERE id=$1
         """, id)
 
         return dict(position)
@@ -90,7 +90,7 @@ async def check_position(request: Request, id: int):
 
     async with pool.acquire() as conn:
         employee = await conn.fetchrow("""
-            SELECT * FROM employees WHERE position_id=$1
+            SELECT * FROM hr.employees WHERE position_id=$1
         """, id)
 
         return {
@@ -106,17 +106,17 @@ async def submit_request(
 ):
     pool = request.app.state.pool
     async with pool.acquire() as conn:
-        status = await conn.fetchval("SELECT status FROM requests WHERE id=$1", request_id)
+        status = await conn.fetchval("SELECT status FROM app.requests WHERE id=$1", request_id)
 
         if status not in (RequestStatus.DRAFT, RequestStatus.RETURNED):
             raise HTTPException(400, "Можно отправить только из DRAFT или RETURNED!")
 
         await conn.execute("""
-            UPDATE requests SET status=$1, updated_at=NOW() WHERE id=$2
+            UPDATE app.requests SET status=$1, updated_at=NOW() WHERE id=$2
         """, RequestStatus.ON_APPROVAL, request_id)
 
         await conn.execute("""
-        INSERT INTO request_history (request_id, action, user_id)
+        INSERT INTO app.request_history (request_id, action, user_id)
         VALUES ($1, 'submit', $2)
         """, request_id, user["user_id"])
 
@@ -134,11 +134,11 @@ async def return_request(
 
     async with pool.acquire() as conn:
         await conn.execute("""
-            UPDATE requests SET status=$1 WHERE id=$2
+            UPDATE app.requests SET status=$1 WHERE id=$2
         """, RequestStatus.RETURNED, request_id)
 
         await conn.execute("""
-            INSERT INTO request_history (request_id, action, user_id, comment)
+            INSERT INTO app.request_history (request_id, action, user_id, comment)
             VALUES ($1, 'return', $2, $3)
         """, request_id, user["user_id"], comment)
 
@@ -156,11 +156,11 @@ async def reject_request(
 
     async with pool.acquire() as conn:
         await conn.execute("""
-            UPDATE requests SET status=$1 WHERE id=$2
+            UPDATE app.requests SET status=$1 WHERE id=$2
         """, RequestStatus.REJECTED, request_id)
 
         await conn.execute("""
-            INSERT INTO request_history (request_id, action, user_id, comment)
+            INSERT INTO app.request_history (request_id, action, user_id, comment)
             VALUES ($1, 'reject', $2, $3)
         """, request_id, user["user_id"], comment)
 
@@ -176,17 +176,17 @@ async def take_request(
     pool = request.app.state.pool
     async with pool.acquire() as conn:
         status = await conn.fetchval(
-            "SELECT status FROM requests WHERE id=$1",
+            "SELECT status FROM app.requests WHERE id=$1",
             request_id
         )
         if status != RequestStatus.APPROVED:
             raise HTTPException(400, "Можно взять только APPROVED")
         await conn.execute("""
-        UPDATE requests SET status=$1 WHERE id=$2
+        UPDATE app.requests SET status=$1 WHERE id=$2
         """, RequestStatus.IN_PROGRESS, request_id)
 
         await conn.execute("""
-        INSERT INTO request_history (request_id, action, user_id)
+        INSERT INTO app.request_history (request_id, action, user_id)
         VALUES ($1, 'take', $2)
         """, request_id, user["user_id"])
 
@@ -202,17 +202,17 @@ async def complete_request(
     pool = request.app.state.pool
     async with pool.acquire() as conn:
         status = await conn.fetchval(
-            "SELECT status FROM requests WHERE id=$1",
+            "SELECT status FROM app.requests WHERE id=$1",
             request_id
         )
         if status != RequestStatus.IN_PROGRESS:
             raise HTTPException(400, "Можно завершить только IN_PROGRESS")
         await conn.execute("""
-        UPDATE requests SET status=$1 WHERE id=$2
+        UPDATE app.requests SET status=$1 WHERE id=$2
         """, RequestStatus.DONE, request_id)
 
         await conn.execute("""
-        INSERT INTO request_history (request_id, action, user_id)
+        INSERT INTO app.request_history (request_id, action, user_id)
         VALUES ($1, 'complete', $2)
         """, request_id, user["user_id"])
 
@@ -231,10 +231,10 @@ async def get_requests(
             SELECT r.id, r.creator_id, r.scenario_type, r.status, r.comment as manager_comment,
                    r.created_at, r.updated_at, r.description,
                    rh.comment as history_comment, rh.action as last_action
-            FROM requests r
+            FROM app.requests r
             LEFT JOIN LATERAL (
                 SELECT comment, action, created_at
-                FROM request_history
+                FROM app.request_history
                 WHERE request_id = r.id AND action IN ('return', 'reject')
                 ORDER BY created_at DESC LIMIT 1
             ) rh ON true
@@ -249,7 +249,7 @@ async def get_requests(
             # Согласующий видит: ожидающие согласования + с чем он взаимодействовал + исполненные, которые согласовал
             query = base_select + """
                 WHERE r.status = 'ON_APPROVAL'
-                OR r.id IN (SELECT request_id FROM request_history WHERE user_id = $1 AND action IN ('approve','return','reject'))
+                OR r.id IN (SELECT request_id FROM app.request_history WHERE user_id = $1 AND action IN ('approve','return','reject'))
                 ORDER BY r.created_at DESC
             """
             rows = await conn.fetch(query, user["user_id"])
@@ -258,8 +258,8 @@ async def get_requests(
             # Исполнитель видит: пул согласованных (ещё не взятых) + только те, которые взял/обработал он сам
             # Взятая заявка полностью скрывается от других исполнителей
             query = base_select + """
-                WHERE (r.status = 'APPROVED' AND r.id NOT IN (SELECT request_id FROM request_history WHERE action = 'take'))
-                OR r.id IN (SELECT request_id FROM request_history WHERE user_id = $1 AND action IN ('take','complete','return','reject'))
+                WHERE (r.status = 'APPROVED' AND r.id NOT IN (SELECT request_id FROM app.request_history WHERE action = 'take'))
+                OR r.id IN (SELECT request_id FROM app.request_history WHERE user_id = $1 AND action IN ('take','complete','return','reject'))
                 ORDER BY r.created_at DESC
             """
             rows = await conn.fetch(query, user["user_id"])
@@ -276,16 +276,16 @@ async def export_request(
 ):
     pool = request.app.state.pool
     async with pool.acquire() as conn:
-        status = await conn.fetchval("SELECT status FROM requests WHERE id=$1", request_id)
+        status = await conn.fetchval("SELECT status FROM app.requests WHERE id=$1", request_id)
         if not status: raise HTTPException(404, "Заявка не найдена")
         if status == "DRAFT": raise HTTPException(400, "Экспорт черновиков запрещён")
 
         req = await conn.fetchrow(
-            "SELECT r.*, u.full_name as creator_name FROM requests r JOIN users u ON r.creator_id = u.id WHERE r.id=$1",
+            "SELECT r.*, u.full_name as creator_name FROM app.requests r JOIN app.users u ON r.creator_id = u.id WHERE r.id=$1",
             request_id)
-        fields = await conn.fetch("SELECT * FROM request_data WHERE request_id=$1", request_id)
+        fields = await conn.fetch("SELECT * FROM app.request_data WHERE request_id=$1", request_id)
         history = await conn.fetch(
-            "SELECT rh.action, rh.comment, rh.created_at, u.full_name as user_name FROM request_history rh JOIN users u ON rh.user_id = u.id WHERE rh.request_id=$1 ORDER BY rh.created_at",
+            "SELECT rh.action, rh.comment, rh.created_at, u.full_name as user_name FROM app.request_history rh JOIN app.users u ON rh.user_id = u.id WHERE rh.request_id=$1 ORDER BY rh.created_at",
             request_id)
 
         if format == "xlsx": return await _export_xlsx(req, fields, history)
@@ -304,10 +304,10 @@ async def get_request_detail(
         SELECT r.id, r.creator_id, r.scenario_type, r.status, r.comment as manager_comment,
         r.created_at, r.updated_at, r.description,
         rh.comment as history_comment, rh.action as last_action
-        FROM requests r
+        FROM app.requests r
         LEFT JOIN LATERAL (
             SELECT comment, action, created_at
-            FROM request_history
+            FROM app.request_history
             WHERE request_id = r.id
             AND action IN ('return', 'reject')
             ORDER BY created_at DESC
@@ -331,7 +331,7 @@ async def get_request_fields(
     pool = request.app.state.pool
     async with pool.acquire() as conn:
         rows = await conn.fetch("""
-        SELECT * FROM request_data WHERE request_id=$1
+        SELECT * FROM app.request_data WHERE request_id=$1
         """, request_id)
         return [dict(row) for row in rows]
 
@@ -346,7 +346,7 @@ async def get_request_history(
     async with pool.acquire() as conn:
         rows = await conn.fetch("""
         SELECT rh.*, u.full_name, u.role
-        FROM request_history rh
+        FROM app.request_history rh
         LEFT JOIN users u ON rh.user_id = u.id
         WHERE rh.request_id=$1
         ORDER BY rh.created_at DESC
@@ -363,12 +363,12 @@ async def update_request(
 ):
     pool = request.app.state.pool
     async with pool.acquire() as conn:
-        status = await conn.fetchval("SELECT status FROM requests WHERE id=$1", request_id)
+        status = await conn.fetchval("SELECT status FROM app.requests WHERE id=$1", request_id)
 
         if status not in (RequestStatus.DRAFT, RequestStatus.RETURNED):
             raise HTTPException(400, detail="Можно редактировать только заявки в статусе DRAFT или RETURNED")
 
-        creator = await conn.fetchval("SELECT creator_id FROM requests WHERE id=$1", request_id)
+        creator = await conn.fetchval("SELECT creator_id FROM app.requests WHERE id=$1", request_id)
         if creator != user["user_id"]:
             raise HTTPException(403, detail="Нет доступа к редактированию этой заявки")
 
@@ -376,18 +376,18 @@ async def update_request(
         new_status = RequestStatus.DRAFT if status == RequestStatus.RETURNED else status
 
         await conn.execute("""
-            UPDATE requests SET comment=$1, description=$2, status=$3 WHERE id=$4
+            UPDATE app.requests SET comment=$1, description=$2, status=$3 WHERE id=$4
         """, data.comment, data.description, new_status, request_id)
 
         # Обновляем заголовок в истории создания
         await conn.execute("""
-            UPDATE request_history SET comment=$1 WHERE request_id=$2 AND action='create'
+            UPDATE app.request_history SET comment=$1 WHERE request_id=$2 AND action='create'
         """, data.comment, request_id)
 
-        await conn.execute("DELETE FROM request_data WHERE request_id=$1", request_id)
+        await conn.execute("DELETE FROM app.request_data WHERE request_id=$1", request_id)
         for field in data.fields:
             await conn.execute("""
-                INSERT INTO request_data (request_id, field_name, as_is_value, to_be_value)
+                INSERT INTO app.request_data (request_id, field_name, as_is_value, to_be_value)
                 VALUES ($1, $2, $3, $4)
             """, request_id, field.name, field.as_is, field.to_be)
 
@@ -403,7 +403,7 @@ async def delete_request(
     pool = request.app.state.pool
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT status FROM requests WHERE id=$1 AND creator_id=$2",
+            "SELECT status FROM app.requests WHERE id=$1 AND creator_id=$2",
             request_id, user["user_id"]
         )
         if not row:
@@ -413,14 +413,14 @@ async def delete_request(
 
         # Проверка: отправлялась ли заявка ранее хоть раз
         was_submitted = await conn.fetchval(
-            "SELECT EXISTS(SELECT 1 FROM request_history WHERE request_id=$1 AND action='submit')",
+            "SELECT EXISTS(SELECT 1 FROM app.request_history WHERE request_id=$1 AND action='submit')",
             request_id
         )
         if was_submitted:
             raise HTTPException(403, "Невозможно удалить заявку, которая уже отправлялась")
 
         # Удаление (CASCADE)
-        await conn.execute("DELETE FROM requests WHERE id=$1", request_id)
+        await conn.execute("DELETE FROM app.requests WHERE id=$1", request_id)
         return {"message": "Заявка удалена"}
 
 

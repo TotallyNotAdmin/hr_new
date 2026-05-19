@@ -17,8 +17,8 @@ async def get_employees(
 
         rows = await conn.fetch("""
             SELECT e.id, e.full_name, e.position_id, p.position_name
-            FROM employees e
-            LEFT JOIN positions p ON e.position_id = p.id
+            FROM hr.employees e
+            LEFT JOIN hr.positions p ON e.position_id = p.id
         """)
         return [dict(row) for row in rows]
 
@@ -30,8 +30,8 @@ async def export_employees(request: Request, user=Depends(require_role([Role.MAN
         # Добавляем JOIN для получения должности
         rows = await conn.fetch("""
             SELECT e.id, e.full_name, p.position_name 
-            FROM employees e 
-            LEFT JOIN positions p ON e.position_id = p.id 
+            FROM hr.employees e 
+            LEFT JOIN hr.positions p ON e.position_id = p.id 
             ORDER BY e.id
         """)
 

@@ -21,7 +21,7 @@ async def login(data: LoginRequest, request: Request):
     async with pool.acquire() as conn:
         login_input = data.login.lower().strip()
         user = await conn.fetchrow(
-            "SELECT * FROM users WHERE login=$1",
+            "SELECT * FROM app.users WHERE login=$1",
             login_input
         )
         print("INPUT PASSWORD:", data.password)
@@ -62,7 +62,7 @@ async def change_password(
 ):
     pool = request.app.state.pool
     async with pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT password_hash FROM users WHERE id=$1", user["user_id"])
+        row = await conn.fetchrow("SELECT password_hash FROM app.users WHERE id=$1", user["user_id"])
         
         if not row or not bcrypt_lib.checkpw(
             _safe_password_bytes(data.current_password),
@@ -74,7 +74,7 @@ async def change_password(
             raise HTTPException(status_code=400, detail="Новый пароль не должен совпадать с текущим!")
 
         await conn.execute(
-            "UPDATE users SET password_hash=$1 WHERE id=$2",
+            "UPDATE app.users SET password_hash=$1 WHERE id=$2",
             bcrypt_lib.hashpw(
                 _safe_password_bytes(data.new_password),
                 bcrypt_lib.gensalt()
