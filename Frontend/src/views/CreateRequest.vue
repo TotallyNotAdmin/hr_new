@@ -488,6 +488,8 @@ const handleImport = async (event) => {
     if (dateCol !== -1 && row[dateCol]) {
 	  const rawDate = row[dateCol];
 	  let dateObj = new Date(rawDate);
+
+	  console.log('Импортированная дата (сырая):', rawDate, '→', dateObj)
 	  
 	  if (isNaN(dateObj.getTime()) && rawDate.includes('.')) {
 	    const [d, m, y] = rawDate.split('.');
