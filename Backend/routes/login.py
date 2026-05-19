@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 def _safe_password(pwd: str, max_bytes: int = 72) -> str:
-    """Обрезает пароль до max_bytes для совместимости с bcrypt"""
     pwd_bytes = pwd.encode('utf-8')
     if len(pwd_bytes) <= max_bytes:
         return pwd
@@ -19,7 +18,7 @@ def _safe_password(pwd: str, max_bytes: int = 72) -> str:
 
 @router.post("/login", response_model=TokenResponse)
 async def login(data: LoginRequest, request: Request):
-    logger.debug(f"Password length (bytes): {len(data.password.encode('utf-8'))}")
+    logger.debug(f"Попытка входа: {data.login} (длина пароля: {len(data.password.encode('utf-8'))} байт)")
     pool = request.app.state.pool
     async with pool.acquire() as conn:
         login_input = data.login.lower().strip()
@@ -29,7 +28,7 @@ async def login(data: LoginRequest, request: Request):
         )
         print("INPUT PASSWORD:", data.password)
         print("HASH FROM DB:", user["password_hash"])
-        print("VERIFY:", bcrypt.verify(data.password, user["password_hash"]))        
+        #  print("VERIFY:", bcrypt.verify(data.password, user["password_hash"]))        
 
 
         if not user:
