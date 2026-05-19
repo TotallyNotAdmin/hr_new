@@ -33,11 +33,11 @@ async def login(data: LoginRequest, request: Request):
             raise HTTPException(status_code=401, detail="Неверный логин или пароль")
             
         try:
-		    if not bcrypt_lib.checkpw(_safe_password_bytes(password),bcrypt_lib.gensalt()):
-		        raise HTTPException(status_code=401, detail="Неверный логин или пароль")
-		except ValueError as e:
-		    logger.error(f"Password length error: {e}")
-		    raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+            if not bcrypt_lib.checkpw(_safe_password_bytes(password),bcrypt_lib.gensalt()):
+                raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+        except ValueError as e:
+            logger.error(f"Password length error: {e}")
+            raise HTTPException(status_code=401, detail="Неверный логин или пароль")
         
         token = create_token({
             "user_id": user["id"],
@@ -62,20 +62,20 @@ async def change_password(
         row = await conn.fetchrow("SELECT password_hash FROM users WHERE id=$1", user["user_id"])
         
         if not row or not bcrypt_lib.checkpw(
-		    _safe_password_bytes(data.current_password),
-		    row["password_hash"].encode('utf-8')
-		):
-		    raise HTTPException(status_code=400, detail="Неверный текущий пароль!")
+            _safe_password_bytes(data.current_password),
+            row["password_hash"].encode('utf-8')
+        ):
+            raise HTTPException(status_code=400, detail="Неверный текущий пароль!")
 
-		if data.current_password == data.new_password:
-		    raise HTTPException(status_code=400, detail="Новый пароль не должен совпадать с текущим!")
+        if data.current_password == data.new_password:
+            raise HTTPException(status_code=400, detail="Новый пароль не должен совпадать с текущим!")
 
-		await conn.execute(
-		    "UPDATE users SET password_hash=$1 WHERE id=$2",
-		    bcrypt_lib.hashpw(
-		        _safe_password_bytes(data.new_password),
-		        bcrypt_lib.gensalt()
-		    ).decode('utf-8'),
-		    user["user_id"]
-		)
+        await conn.execute(
+            "UPDATE users SET password_hash=$1 WHERE id=$2",
+            bcrypt_lib.hashpw(
+                _safe_password_bytes(data.new_password),
+                bcrypt_lib.gensalt()
+            ).decode('utf-8'),
+            user["user_id"]
+        )
         return {"message": "Пароль успешно изменен"}
