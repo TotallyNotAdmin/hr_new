@@ -347,7 +347,7 @@ async def get_request_history(
         rows = await conn.fetch("""
         SELECT rh.*, u.full_name, u.role
         FROM app.request_history rh
-        LEFT JOIN users u ON rh.user_id = u.id
+        LEFT JOIN app.users u ON rh.user_id = u.id
         WHERE rh.request_id=$1
         ORDER BY rh.created_at DESC
         """, request_id)
