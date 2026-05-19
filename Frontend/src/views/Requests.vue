@@ -36,7 +36,7 @@
             <v-card-actions class="mt-auto">
               <v-btn variant="text" @click="router.push(`/requests/${r.id}`)">Подробнее</v-btn>
               <!-- Редактирование (manager) -->
-              <v-btn v-if="section.cardConfig.showEdit && (r.status==='DRAFT'||r.status==='RETURNED')"
+              <v-btn v-if="auth.isManager && section.cardConfig.showEdit && (r.status==='DRAFT'||r.status==='RETURNED')"
                 color="secondary" size="small" @click="router.push(`/create/${r.id}`)" title="Редактировать">✏️</v-btn>
               <!-- Согласование (approver) -->
               <template v-if="section.cardConfig.showApproval && r.status==='ON_APPROVAL'">
