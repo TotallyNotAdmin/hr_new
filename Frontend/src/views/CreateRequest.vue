@@ -468,7 +468,7 @@ const handleImport = async (event) => {
     
     const empCol = getCol(['фио сотрудника', 'сотрудник']);
     const posCol = getCol(['новая ше', 'наименование новой']);
-    const dateCol = getCol(['дата перевода', 'дата']);
+    const dateCol = getCol(['дата перевода']);
 
     if (empCol === -1 || posCol === -1) {
       throw new Error('Не найдены обязательные столбцы: "ФИО сотрудника" и "Новая ШЕ"');
