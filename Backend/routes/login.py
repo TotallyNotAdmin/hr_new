@@ -33,7 +33,10 @@ async def login(data: LoginRequest, request: Request):
             raise HTTPException(status_code=401, detail="Неверный логин или пароль")
             
         try:
-            if not bcrypt_lib.checkpw(_safe_password_bytes(password),bcrypt_lib.gensalt()):
+            if not bcrypt_lib.checkpw(
+                _safe_password_bytes(data.password),
+                user["password_hash"].encode('utf-8')
+            ):
                 raise HTTPException(status_code=401, detail="Неверный логин или пароль")
         except ValueError as e:
             logger.error(f"Password length error: {e}")
