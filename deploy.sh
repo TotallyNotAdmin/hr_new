@@ -61,9 +61,9 @@ main() {
         exit 1
     fi
     
-    сhmod +x update.sh
     log_info "Запуск установки..."
     chmod +x install.sh
+    chmod +x update.sh
     exec ./install.sh
 }
 
