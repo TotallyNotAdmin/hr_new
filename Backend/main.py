@@ -18,12 +18,7 @@ app.include_router(employees.router)
 app.include_router(positions.router)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8080",
-        "http://10.0.2.15:80",
-        "http://10.0.2.15:8080",
-        "http://localhost:80",
-    ],
+    allow_origins=[*],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
