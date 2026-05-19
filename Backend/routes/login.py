@@ -27,7 +27,11 @@ async def login(data: LoginRequest, request: Request):
             "SELECT * FROM users WHERE login=$1",
             login_input
         )
-        
+    print("INPUT PASSWORD:", data.password)
+    print("HASH FROM DB:", user["password_hash"])
+    print("VERIFY:", bcrypt.verify(data.password, user["password_hash"]))        
+
+
         if not user:
             raise HTTPException(status_code=401, detail="Неверный логин или пароль")
             
