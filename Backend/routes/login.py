@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, HTTPException, Depends
-from passlib.hash import bcrypt
+import bcrypt as bcrypt_lib
 from schemas import LoginRequest, TokenResponse, ChangePasswordRequest
 from auth import create_token, require_role
 from models import Role
@@ -9,11 +9,9 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _safe_password(pwd: str, max_bytes: int = 72) -> str:
+def _safe_password_bytes(pwd: str, max_bytes: int = 72) -> bytes:
     pwd_bytes = pwd.encode('utf-8')
-    if len(pwd_bytes) <= max_bytes:
-        return pwd
-    return pwd_bytes[:max_bytes].decode('utf-8', errors='ignore')
+    return pwd_bytes[:max_bytes]
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -35,13 +33,15 @@ async def login(data: LoginRequest, request: Request):
             raise HTTPException(status_code=401, detail="Неверный логин или пароль")
             
         try:
-            if not bcrypt.verify(_safe_password(data.password), user["password_hash"]):
-                raise HTTPException(status_code=401, detail="Неверный логин или пароль")
-        except ValueError as e:
-            # Если пароль всё равно слишком длинный
-            logger.error(f"Password length error: {e}")
-            raise HTTPException(status_code=401, detail="Неверный логин или пароль")
-            
+		    if not bcrypt_lib.checkpw(
+		        _safe_password_bytes(data.password),
+		        user["password_hash"].encode('utf-8')
+		    ):
+		        raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+		except ValueError as e:
+		    logger.error(f"Password length error: {e}")
+		    raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+        
         token = create_token({
             "user_id": user["id"],
             "login": user["login"],
@@ -64,15 +64,21 @@ async def change_password(
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT password_hash FROM users WHERE id=$1", user["user_id"])
         
-        if not row or not bcrypt.verify(_safe_password(data.current_password), row["password_hash"]):
-            raise HTTPException(status_code=400, detail="Неверный текущий пароль!")
-            
-        if data.current_password == data.new_password:
-            raise HTTPException(status_code=400, detail="Новый пароль не должен совпадать с текущим!")
-            
-        await conn.execute(
-            "UPDATE users SET password_hash=$1 WHERE id=$2",
-            bcrypt.hash(_safe_password(data.new_password)),
-            user["user_id"]
-        )
+        if not row or not bcrypt_lib.checkpw(
+		    _safe_password_bytes(data.current_password),
+		    row["password_hash"].encode('utf-8')
+		):
+		    raise HTTPException(status_code=400, detail="Неверный текущий пароль!")
+
+		if data.current_password == data.new_password:
+		    raise HTTPException(status_code=400, detail="Новый пароль не должен совпадать с текущим!")
+
+		await conn.execute(
+		    "UPDATE users SET password_hash=$1 WHERE id=$2",
+		    bcrypt_lib.hashpw(
+		        _safe_password_bytes(data.new_password),
+		        bcrypt_lib.gensalt()
+		    ).decode('utf-8'),
+		    user["user_id"]
+		)
         return {"message": "Пароль успешно изменен"}
