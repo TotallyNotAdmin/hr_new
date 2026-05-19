@@ -62,8 +62,8 @@ main() {
     fi
     
     log_info "Запуск установки..."
-    chmod +x install.sh
-    chmod +x update.sh
+    sudo chmod +x install.sh
+    sudo chmod +x update.sh
     exec ./install.sh
 }
 
