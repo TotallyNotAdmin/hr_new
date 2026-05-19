@@ -22,6 +22,14 @@ except ImportError:
 from const import DATABASE_URL
 
 
+def _safe_password(pwd: str, max_bytes: int = 72) -> str:
+    """Обрезает пароль до max_bytes для совместимости с bcrypt"""
+    pwd_bytes = pwd.encode('utf-8')
+    if len(pwd_bytes) <= max_bytes:
+        return pwd
+    return pwd_bytes[:max_bytes].decode('utf-8', errors='ignore')
+
+
 def validate_database_url(url: str) -> bool:
     try:
         parsed = urlparse(url)
@@ -162,8 +170,8 @@ async def sync_users(pool):
         for row in rows:
             role = ROLE_MAP[row["system_name"]]
             login = row["email"].lower().strip()
-            password = secrets.token_urlsafe(12)  # генерируем пароль
-            pwd_hash = bcrypt.hash(password)
+            password = secrets.token_urlsafe(12)
+            pwd_hash = bcrypt.hash(_safe_password(password))
 
             # Вставляем или обновляем
             result = await conn.fetchval("""

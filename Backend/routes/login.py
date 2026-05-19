@@ -34,7 +34,12 @@ async def login(data: LoginRequest, request: Request):
         if not user:
             raise HTTPException(status_code=401, detail="Неверный логин или пароль")
             
-        if not bcrypt.verify(_safe_password(data.password), user["password_hash"]):
+        try:
+            if not bcrypt.verify(_safe_password(data.password), user["password_hash"]):
+                raise HTTPException(status_code=401, detail="Неверный логин или пароль")
+        except ValueError as e:
+            # Если пароль всё равно слишком длинный
+            logger.error(f"Password length error: {e}")
             raise HTTPException(status_code=401, detail="Неверный логин или пароль")
             
         token = create_token({
