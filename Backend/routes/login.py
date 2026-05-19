@@ -34,8 +34,8 @@ async def login(data: LoginRequest, request: Request):
             
         try:
 		    if not bcrypt_lib.checkpw(
-		        _safe_password_bytes(data.password),
-		        user["password_hash"].encode('utf-8')
+		    	_safe_password_bytes(password),
+		    	bcrypt_lib.gensalt()
 		    ):
 		        raise HTTPException(status_code=401, detail="Неверный логин или пароль")
 		except ValueError as e:
