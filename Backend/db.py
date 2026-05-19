@@ -8,8 +8,14 @@ async def set_search_path(connection):
 async def connect_db(app: FastAPI):
     app.state.pool = await asyncpg.create_pool(
         DATABASE_URL,
-        init=set_search_path
+        init=set_search_path,
+        min_size=2,
+        max_size=10
     )
+    async with app.state.pool.acquire() as conn:
+        result = await conn.fetchval("SHOW search_path")
+        print(f"Search path установлен: {result}")    
+
 
 async def close_db(app: FastAPI):
     await app.state.pool.close()
