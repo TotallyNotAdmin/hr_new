@@ -11,7 +11,7 @@ async def lifespan(app: FastAPI):
     yield
     await close_db(app)
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, redirect_slashes=False)
 app.include_router(login.router)
 app.include_router(requests.router)
 app.include_router(employees.router)
