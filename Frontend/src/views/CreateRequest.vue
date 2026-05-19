@@ -38,6 +38,7 @@
           <v-col cols="12" md="6">
             <h5 class="text-primary mb-2">Текущее состояние (AS IS)</h5>
             <v-select v-model="form.employee_id" :items="employees" item-title="full_name" item-value="id" label="Сотрудник" prepend-icon="mdi-account" @update:modelValue="loadEmployeeData" />
+            <v-text-field v-model="form.as_is_position" label="Должность" readonly prepend-icon="mdi-briefcase" />
             <v-text-field v-model="form.as_is_address" label="Адрес штатной единицы" readonly prepend-icon="mdi-map-marker" />
             <v-text-field v-model="form.as_is_salary" label="Оклад (руб.)" readonly type="number" prepend-icon="mdi-cash" />
             <v-text-field v-model="form.as_is_bonus_month" label="Премия (месяц, %)" readonly type="number" />
