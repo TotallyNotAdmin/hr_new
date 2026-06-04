@@ -29,11 +29,61 @@ expand_path() {
     fi
 }
 
+# ==================== ПРОВЕРКА И УСТАНОВКА GIT ====================
+ensure_git() {
+    if command -v git &>/dev/null; then
+        log_success "Git уже установлен: $(git --version)"
+        return 0
+    fi
+    
+    if ! sudo -n true 2>/dev/null; then
+        log_info "Для установки git требуются права sudo..."
+        sudo -v || { log_error "Требуется ввод пароля sudo"; exit 1; }
+    fi
+    
+    # Определяем пакетный менеджер
+    if command -v apt-get &>/dev/null; then
+        # Debian / Ubuntu
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq git
+    elif command -v dnf &>/dev/null; then
+        # Fedora / RHEL 8+
+        sudo dnf install -y -q git
+    elif command -v yum &>/dev/null; then
+        # CentOS / RHEL 7
+        sudo yum install -y -q git
+    elif command -v zypper &>/dev/null; then
+        # openSUSE
+        sudo zypper --quiet install -y git
+    elif command -v pacman &>/dev/null; then
+        # Arch Linux
+        sudo pacman -Sy --noconfirm git
+    elif command -v apk &>/dev/null; then
+        # Alpine
+        sudo apk add --no-cache git
+    else
+        log_error "Не удалось определить пакетный менеджер вашей системы!"
+        log_error "Установите git вручную и повторите запуск скрипта"
+        log_error "Пример: sudo apt install git  (для Ubuntu/Debian)"
+        exit 1
+    fi
+    
+    # Проверяем, что git действительно появился
+    if ! command -v git &>/dev/null; then
+        log_error "Git не найден после установки!"
+        log_error "Попробуйте установить вручную: sudo apt install git"
+        exit 1
+    fi
+    
+    log_success "Git успешно установлен: $(git --version)"
+}
+
 # === ОСНОВНОЙ СЦЕНАРИЙ ===
 main() {
     echo -e "${GREEN}Загрузчик системы Штат-контроль${NC}"
     echo "================================"
     
+    ensure_git
     TARGET_DIR=$(expand_path "$TARGET_DIR")
     log_info "Целевая директория: $TARGET_DIR"
     
