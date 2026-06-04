@@ -503,7 +503,6 @@ configure_firewall() {
         return 0
     fi
     
-    # Frontend
     if ! sudo ufw status | grep -qE "^80/tcp\s+ALLOW"; then
         log_info "Проверка доступности порта 80 (HTTP)..."
         sudo ufw allow 80/tcp
@@ -511,20 +510,11 @@ configure_firewall() {
         log_info "Порт 80 открыт"
     fi
     
-    # Backend
-    if ! sudo ufw status | grep -qE "^8000/tcp\s+ALLOW"; then
-        log_info "Проверка доступности порта 8000 (Backend API)..."
-        sudo ufw allow 8000/tcp
-    else
-        log_info "Порт 8000 открыт"
-    fi
-    
-    # Порт PostgreSQL
-    if ! sudo ufw status | grep -qE "^${PG_PORT}/tcp\s+ALLOW"; then
-        log_info "Проверка доступности порта PostgreSQL ${PG_PORT}..."
-        sudo ufw allow "${PG_PORT}/tcp"
-    else
-        log_info "Порт PostgreSQL ${PG_PORT} открыт"
+    if [ "$USE_SSL" = "y" ] || [ "$USE_SSL" = "Y" ]; then
+        if ! sudo ufw status | grep -qE "^443/tcp\s+ALLOW"; then
+            log_info "Проверка доступности порта 443 (HTTPS)..."
+            sudo ufw allow 443/tcp
+        fi
     fi
     
     log_success "Правила брандмауэра настроены"
