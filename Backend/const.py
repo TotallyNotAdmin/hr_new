@@ -1,9 +1,8 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 try:
-    from dotenv import load_dotenv
-    # Ищем .env в корне проекта
     env_path = Path(__file__).parent.parent / ".env"
     if env_path.exists():
         load_dotenv(env_path)
@@ -20,3 +19,6 @@ if not DATABASE_URL:
 
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-secret-key-change-in-production")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost")
+
+CORS_ORIGINS_STR = os.getenv("CORS_ORIGINS", "http://localhost:8080,http://localhost")
+CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS_STR.split(",") if origin.strip()]

@@ -173,7 +173,6 @@ select_database() {
         
         if [[ "$db_choice" =~ ^[0-9]+$ ]] && [ "$db_choice" -ge 1 ] && [ "$db_choice" -le "${#db_array[@]}" ]; then
             SELECTED_DB="${db_array[$((db_choice-1))]}"
-            # Финальная очистка: удаляем все пробелы из имени БД
             SELECTED_DB=$(echo "$SELECTED_DB" | tr -d '[:space:]')
             log_success "Выбрана база: $SELECTED_DB"
             break
@@ -181,6 +180,117 @@ select_database() {
             log_error "Неверный номер! Попробуйте снова"
         fi
     done
+}
+
+# ==================== АВТОПРОДЛЕНИЕ СЕРТИФИКАТОВ ====================
+setup_certbot_cron() {
+    log_info "Настройка автоматического продления сертификатов (cron)..."
+    
+    if sudo crontab -l 2>/dev/null | grep -qF "certbot renew.*$DOMAIN"; then
+        log_warn "Задача продления для $DOMAIN уже существует в crontab"
+        return 0
+    fi
+    
+    local CERTBOT_PATH=$(command -v certbot 2>/dev/null || echo "/usr/bin/certbot")
+    local DOCKER_PATH=$(command -v docker 2>/dev/null || echo "/usr/bin/docker")
+    local PROJECT_DIR="$SCRIPT_DIR"
+    
+    local DEPLOY_HOOK="cp -f /etc/letsencrypt/live/$DOMAIN/fullchain.pem $PROJECT_DIR/certs/ && "
+    DEPLOY_HOOK+="cp -f /etc/letsencrypt/live/$DOMAIN/privkey.pem $PROJECT_DIR/certs/ && "
+    DEPLOY_HOOK+="$DOCKER_PATH restart hr-frontend"
+    
+    local CRON_CMD="0 3 * * * $CERTBOT_PATH renew --quiet --deploy-hook \"$DEPLOY_HOOK\" # HR-System SSL renewal for $DOMAIN"
+    
+    (sudo crontab -l 2>/dev/null; echo "$CRON_CMD") | sudo crontab -
+    
+    if [ $? -eq 0 ]; then
+        log_success "Задача автопродления добавлена в crontab (ежедневно в 03:00)"
+        log_info "Команда: $CRON_CMD"
+        log_warn "Сертификат будет продлён автоматически за 30 дней до истечения"
+    else
+        log_error "Не удалось добавить задачу в crontab!"
+        log_warn "Добавьте вручную командой: sudo crontab -e"
+        log_warn "Строка для добавления:"
+        log_warn "  $CRON_CMD"
+    fi
+}
+
+# ==================== НАСТРОЙКА ДОМЕНА И SSL ====================
+configure_domain_and_ssl() {
+    log_info "Настройка домена и HTTPS..."
+    
+    read -p "Хотите настроить HTTPS (выпустить бесплатный сертификат Let's Encrypt)? (y/n) [y]: " USE_SSL
+    USE_SSL=${USE_SSL:-y}
+    
+    DOMAIN=""
+    if [[ "$USE_SSL" =~ ^[Yy]$ ]]; then
+        while true; do
+            read -p "Введите доменное имя (например, hr.company.com): " DOMAIN
+            DOMAIN=$(echo "$DOMAIN" | xargs)
+            
+            if [[ -z "$DOMAIN" ]]; then
+                log_error "Домен не может быть пустым!"
+            elif [[ "$DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                log_error "Let's Encrypt не поддерживает выпуск сертификатов для IP-адресов!"
+                log_warn "Введите именно доменное имя, либо выберите 'n' для работы по HTTP"
+            else
+                break
+            fi
+        done
+        
+        if command -v ufw &>/dev/null && sudo ufw status | grep -q "Status: active"; then
+            if ! sudo ufw status | grep -qE "^80/tcp\s+ALLOW"; then
+                sudo ufw allow 80/tcp
+            fi
+        fi
+        
+        log_info "Установка certbot..."
+        sudo apt-get update -qq && sudo apt-get install -y -qq certbot
+        
+        if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+            log_warn "Сертификат для $DOMAIN уже существует"
+        else
+            log_info "Получение сертификата для $DOMAIN..."
+            
+            sudo certbot certonly --standalone -d "$DOMAIN" \
+                --agree-tos \
+                --register-unsafely-without-email \
+                --non-interactive
+            
+            if [ $? -ne 0 ]; then
+                log_error "Не удалось получить сертификат!"
+                log_error "Возможные причины:"
+                log_error "  1. Домен $DOMAIN не указывает на IP-адрес этого сервера"
+                log_error "  2. Порт 80 закрыт на уровне провайдера или внешнего роутера"
+                read -p "Продолжить установку в режиме HTTP (без сертификата)? (y/n) [y]: " CONTINUE_NO_SSL
+                CONTINUE_NO_SSL=${CONTINUE_NO_SSL:-y}
+                if [[ "$CONTINUE_NO_SSL" =~ ^[Yy]$ ]]; then
+                    USE_SSL="n"
+                else
+                    exit 1
+                fi
+            else
+                log_success "Сертификат успешно получен!"
+            fi
+        fi
+        
+        if [[ "$USE_SSL" =~ ^[Yy]$ ]]; then
+            log_info "Копирование сертификатов в ./certs..."
+            mkdir -p ./certs
+            sudo cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem ./certs/
+            sudo cp /etc/letsencrypt/live/$DOMAIN/privkey.pem ./certs/
+            sudo chown $USER:$USER ./certs/*
+            chmod 600 ./certs/privkey.pem
+            
+            setup_certbot_cron
+        fi
+    else
+        log_info "Выпуск сертификатов пропущен. Система будет работать по обычному HTTP"
+        mkdir -p ./certs
+    fi
+    
+    export DOMAIN
+    export USE_SSL
 }
 
 # ==================== ГЕНЕРАЦИЯ .ENV ====================
@@ -278,6 +388,82 @@ configure_pg_hba() {
     fi
 }
 
+# ==================== ГЕНЕРАЦИЯ NGINX ====================
+generate_nginx_conf() {
+    log_info "Генерация конфигурации Nginx..."
+    local NGINX_CONF="./Frontend/nginx.conf"
+    mkdir -p ./Frontend
+    
+    # Общий блок проксирования API
+    local API_PROXY='
+    location /api/ {
+        proxy_pass http://hr-backend:8000/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 75s;
+    }
+    
+    location /docs {
+        proxy_pass http://hr-backend:8000/docs;
+        proxy_set_header Host $host;
+    }
+    location /openapi.json {
+        proxy_pass http://hr-backend:8000/openapi.json;
+        proxy_set_header Host $host;
+    }
+    location /redoc {
+        proxy_pass http://hr-backend:8000/redoc;
+        proxy_set_header Host $host;
+    }'
+
+    if [ "$USE_SSL" = "y" ] || [ "$USE_SSL" = "Y" ]; then
+        cat > "$NGINX_CONF" << EOF
+server {
+    listen 80;
+    server_name $DOMAIN;
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name $DOMAIN;
+
+    ssl_certificate /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+        try_files \$uri \$uri/ /index.html;
+    }
+$API_PROXY
+}
+EOF
+    else
+        local SERVER_NAME="_"
+        [ -n "$DOMAIN" ] && SERVER_NAME="$DOMAIN"
+        cat > "$NGINX_CONF" << EOF
+server {
+    listen 80;
+    server_name $SERVER_NAME;
+
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+        try_files \$uri \$uri/ /index.html;
+    }
+$API_PROXY
+}
+EOF
+    fi
+    log_success "Nginx конфигурация сгенерирована"
+}
+
 # ==================== ЗАПУСК КОНТЕЙНЕРОВ ====================
 start_containers() {
     log_info "Запуск контейнеров..."
@@ -317,7 +503,6 @@ configure_firewall() {
         return 0
     fi
     
-    # Frontend
     if ! sudo ufw status | grep -qE "^80/tcp\s+ALLOW"; then
         log_info "Проверка доступности порта 80 (HTTP)..."
         sudo ufw allow 80/tcp
@@ -325,20 +510,11 @@ configure_firewall() {
         log_info "Порт 80 открыт"
     fi
     
-    # Backend
-    if ! sudo ufw status | grep -qE "^8000/tcp\s+ALLOW"; then
-        log_info "Проверка доступности порта 8000 (Backend API)..."
-        sudo ufw allow 8000/tcp
-    else
-        log_info "Порт 8000 открыт"
-    fi
-    
-    # Порт PostgreSQL
-    if ! sudo ufw status | grep -qE "^${PG_PORT}/tcp\s+ALLOW"; then
-        log_info "Проверка доступности порта PostgreSQL ${PG_PORT}..."
-        sudo ufw allow "${PG_PORT}/tcp"
-    else
-        log_info "Порт PostgreSQL ${PG_PORT} открыт"
+    if [ "$USE_SSL" = "y" ] || [ "$USE_SSL" = "Y" ]; then
+        if ! sudo ufw status | grep -qE "^443/tcp\s+ALLOW"; then
+            log_info "Проверка доступности порта 443 (HTTPS)..."
+            sudo ufw allow 443/tcp
+        fi
     fi
     
     log_success "Правила брандмауэра настроены"
@@ -346,12 +522,16 @@ configure_firewall() {
 
 # ==================== ФИНАЛЬНЫЕ СООБЩЕНИЯ ====================
 show_completion() {
+    local PROTOCOL="http"
+    [ "$USE_SSL" = "y" ] || [ "$USE_SSL" = "Y" ] && PROTOCOL="https"
+    local URL_HOST="$DOMAIN"
+    [ -z "$URL_HOST" ] && URL_HOST="$(hostname -I | awk '{print $1}' | head -1)"
+
     echo -e "\n${GREEN}╔════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║${NC}    Система успешно установлена!        ${GREEN}║${NC}"
     echo -e "${GREEN}╚════════════════════════════════════════╝${NC}\n"
-    echo "Frontend: http://$(hostname -I | awk '{print $1}' | head -1)"
-    echo "Backend API: http://$(hostname -I | awk '{print $1}' | head -1):8000/docs"
-    echo -e "\nОсновные команды:"
+    echo "Frontend: $PROTOCOL://$URL_HOST"
+    echo "Backend API: $PROTOCOL://$URL_HOST/docs (через Reverse Proxy)"
     echo "   • Просмотр логов:     docker compose logs -f"
     echo "   • Остановка:          docker compose down"
     echo "   • Обновление:         ./update.sh"
@@ -369,6 +549,7 @@ main() {
     ensure_docker_access
     detect_postgres
     select_database
+    configure_domain_and_ssl
     generate_env
     if ! init_database; then
         log_error "Установка прервана: ошибка инициализации БД"
@@ -376,6 +557,7 @@ main() {
     fi
     configure_pg_hba
     configure_firewall
+    generate_nginx_conf
     if ! start_containers; then
         log_error "Установка не завершена из-за ошибки запуска контейнеров"
         exit 1

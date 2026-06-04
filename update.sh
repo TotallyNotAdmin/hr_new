@@ -6,7 +6,7 @@ echo "Обновление системы..."
 
 # Скачиваем новые файлы (через git или curl)
 if [ -d ".git" ]; then
-    git pull origin main
+    git pull origin prod
 else
     # Если нет git — скачиваем архив
     curl -fsSL https://github.com/TotallyNotAdmin/hr_new/archive/main.tar.gz | \
