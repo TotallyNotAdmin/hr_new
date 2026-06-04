@@ -522,12 +522,16 @@ configure_firewall() {
 
 # ==================== ФИНАЛЬНЫЕ СООБЩЕНИЯ ====================
 show_completion() {
+    local PROTOCOL="http"
+    [ "$USE_SSL" = "y" ] || [ "$USE_SSL" = "Y" ] && PROTOCOL="https"
+    local URL_HOST="$DOMAIN"
+    [ -z "$URL_HOST" ] && URL_HOST="$(hostname -I | awk '{print $1}' | head -1)"
+
     echo -e "\n${GREEN}╔════════════════════════════════════════╗${NC}"
     echo -e "${GREEN}║${NC}    Система успешно установлена!        ${GREEN}║${NC}"
     echo -e "${GREEN}╚════════════════════════════════════════╝${NC}\n"
-    echo "Frontend: http://$(hostname -I | awk '{print $1}' | head -1)"
-    echo "Backend API: http://$(hostname -I | awk '{print $1}' | head -1):8000/docs"
-    echo -e "\nОсновные команды:"
+    echo "Frontend: $PROTOCOL://$URL_HOST"
+    echo "Backend API: $PROTOCOL://$URL_HOST/docs (через Reverse Proxy)"
     echo "   • Просмотр логов:     docker compose logs -f"
     echo "   • Остановка:          docker compose down"
     echo "   • Обновление:         ./update.sh"
