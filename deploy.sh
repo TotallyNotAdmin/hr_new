@@ -94,7 +94,7 @@ main() {
         log_info "Обновление существующего репозитория..."
         cd "$TARGET_DIR"
         git fetch origin
-        git reset --hard origin/main 2>/dev/null || git checkout -f origin/main
+        git reset --hard origin/prod 2>/dev/null || git checkout -f origin/prod
         git clean -fd
     else
         log_info "Клонирование репозитория..."
@@ -107,7 +107,7 @@ main() {
     # Проверка наличия install.sh
     if [ ! -f "install.sh" ]; then
         log_error "install.sh не найден в $TARGET_DIR"
-        echo "Проверьте структуру репозитория или связь с веткой main"
+        echo "Проверьте структуру репозитория или связь с веткой prod"
         exit 1
     fi
     
