@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from db import connect_db, close_db
 from routes import login, requests, employees, positions
+from const import CORS_ORIGINS
 
 
 @asynccontextmanager
