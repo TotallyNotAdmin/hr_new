@@ -197,6 +197,7 @@ setup_certbot_cron() {
     
     local DEPLOY_HOOK="cp -f /etc/letsencrypt/live/$DOMAIN/fullchain.pem $PROJECT_DIR/certs/ && "
     DEPLOY_HOOK+="cp -f /etc/letsencrypt/live/$DOMAIN/privkey.pem $PROJECT_DIR/certs/ && "
+    DEPLOY_HOOK+="chmod 644 $PROJECT_DIR/certs/*.pem && "
     DEPLOY_HOOK+="$DOCKER_PATH restart hr-frontend"
     
     local CRON_CMD="0 3 * * * $CERTBOT_PATH renew --quiet --deploy-hook \"$DEPLOY_HOOK\" # HR-System SSL renewal for $DOMAIN"
@@ -280,7 +281,7 @@ configure_domain_and_ssl() {
             sudo cp /etc/letsencrypt/live/$DOMAIN/fullchain.pem ./certs/
             sudo cp /etc/letsencrypt/live/$DOMAIN/privkey.pem ./certs/
             sudo chown $USER:$USER ./certs/*
-            chmod 600 ./certs/privkey.pem
+            chmod 644 ./certs/privkey.pem
             
             setup_certbot_cron
         fi
