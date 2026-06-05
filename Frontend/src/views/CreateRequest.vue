@@ -437,7 +437,6 @@ const handleImport = async (event) => {
     ) || wb.SheetNames[0];
 
     const ws = wb.Sheets[sheetName];
-    console.log('Читаем данные с листа:', sheetName);
     // raw: false гарантирует, что даты и числа придут как строки
     const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
 
@@ -460,8 +459,6 @@ const handleImport = async (event) => {
       throw new Error('Не удалось найти строку с заголовками (ФИО Сотрудника, Новая ШЕ)');
     }
 
-    console.log('Заголовки найдены в строке (индекс):', headerRowIndex);
-    
     const headers = data[headerRowIndex].map(h => String(h).trim().toLowerCase());
     const row = data[headerRowIndex + 1].map(v => String(v).trim());
 
@@ -490,8 +487,6 @@ const handleImport = async (event) => {
 	  const rawDate = row[dateCol];
 	  let dateObj = new Date(rawDate);
 
-	  console.log('Импортированная дата (сырая):', rawDate, '→', dateObj)
-	  
 	  if (isNaN(dateObj.getTime()) && rawDate.includes('.')) {
 	    const [d, m, y] = rawDate.split('.');
 	    dateObj = new Date(`${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`);
